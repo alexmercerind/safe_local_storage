@@ -117,7 +117,7 @@ extension FileExtension on File {
         ),
       );
       if (!await file.exists_()) {
-        await file.create(recursive: true);
+        await file.create_();
       }
       await file.writeAsString(content, flush: true);
       if (keepTransactionInHistory) {
@@ -273,3 +273,8 @@ extension FileSystemEntityExtension on FileSystemEntity {
 /// [Map] storing various instances of [Completer] for
 /// mutual exclusion in [FileExtension.write_].
 final Map<String, Completer> _fileWriteMutexes = <String, Completer>{};
+final Map<String, _Counter> _fileWriteConcurrencyCount = <String, _Counter>{};
+
+class _Counter {
+  int count = 0;
+}

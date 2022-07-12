@@ -44,8 +44,13 @@ class SafeSessionStorage {
   }
 
   /// Writes the [data] to the cache [File].
-  Future<void> write(dynamic data) {
-    return _file.write_(_kJsonEncoder.convert(data));
+  Future<void> write(dynamic data) async {
+    await _completer.future;
+    _completer = Completer();
+    await _file.write_(_kJsonEncoder.convert(data));
+    if (!_completer.isCompleted) {
+      _completer.complete();
+    }
   }
 
   /// Reads the cache [File] and returns the contents as `dynamic`.
@@ -115,7 +120,7 @@ class SafeSessionStorage {
               final data = jsonDecode(content!);
               // Update the existing original [File].
               //// No `await` needed because `write_` ensures no concurrent write operations.
-              _file.write_(
+              await _file.write_(
                 content,
                 keepTransactionInHistory: false,
               );
@@ -140,7 +145,8 @@ class SafeSessionStorage {
 
   void goToCatchBlock() => throw Exception();
 
-  late final File _file;
   final dynamic fallback;
+  late final File _file;
+  Completer _completer = Completer()..complete();
   static const JsonEncoder _kJsonEncoder = JsonEncoder.withIndent('    ');
 }

@@ -7,7 +7,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:path/path.dart';
-import 'package:uuid/uuid.dart';
 
 extension DirectoryExtension on Directory {
   /// Recursively lists all the present [File]s inside the [Directory].
@@ -100,8 +99,8 @@ extension FileExtension on File {
   /// cache [File]'s path.
   ///
   Future<void> write_(
-    String content, {
-    bool keepTransactionInHistory = true,
+    dynamic content, {
+    bool keepTransactionInHistory = false,
   }) async {
     if (_fileWriteMutexes[path] != null) {
       await _fileWriteMutexes[path]!.future;
@@ -113,13 +112,14 @@ extension FileExtension on File {
               !path.startsWith(r'\\?\')
           ? r'\\?\'
           : '';
+      final id = DateTime.now().millisecondsSinceEpoch;
       final files = [
         // History.
         File(
           join(
             prefix + parent.path,
             'Temp',
-            '${basename(path)}.${const Uuid().v4()}',
+            '${basename(path)}.$id',
           ),
         ),
         // Actual file that will be renamed to destination.
@@ -127,17 +127,24 @@ extension FileExtension on File {
           join(
             prefix + parent.path,
             'Temp',
-            '${basename(path)}.${const Uuid().v4()}.src',
+            '${basename(path)}.$id.src',
           ),
         )
       ];
       await Future.wait(files.asMap().entries.map((e) async {
         if (keepTransactionInHistory || e.key != 0) {
           await e.value.create_();
-          await e.value.writeAsString(
-            content,
-            flush: true,
-          );
+          if (content is String) {
+            await e.value.writeAsString(
+              content,
+              flush: true,
+            );
+          } else if (content is List<int>) {
+            await e.value.writeAsBytes(
+              content,
+              flush: true,
+            );
+          }
         }
       }));
       await files.last.rename_(prefix + path);

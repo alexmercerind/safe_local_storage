@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:path/path.dart';
+import 'package:synchronized/synchronized.dart';
 
 import 'package:safe_session_storage/file_system.dart';
 export 'package:safe_session_storage/file_system.dart';
@@ -45,115 +46,119 @@ class SafeSessionStorage {
 
   /// Writes the [data] to the cache [File].
   Future<void> write(dynamic data) async {
-    await _completer.future;
-    _completer = Completer();
-    await _file.write_(_kJsonEncoder.convert(data));
-    if (!_completer.isCompleted) {
-      _completer.complete();
-    }
+    // NOTE: Even though, [File.write_] is made mutually exclusive using [Completer],
+    // it still enters critical section at the same time, sometimes.
+    // Using [Lock] from `package:synchronized` to prevent this.
+    // Tests are not failing anymore.
+    await lock.synchronized(() async {
+      await _file.write_(_kJsonEncoder.convert(data));
+    });
   }
 
   /// Reads the cache [File] and returns the contents as `dynamic`.
-  Future<dynamic> read() async {
-    final temp = Directory(join(_file.parent.path, 'Temp'));
-    // Used to determine if cache was missing or corrupt & show correct logs.
-    var missing = false;
-    var contents = <File>[];
-    try {
-      if (await _file.exists_()) {
-        // Attempt to read & [jsonDecode] data from the actual file.
-        final content = await _file.read_();
-        if (content != null) {
-          final data = jsonDecode(content);
-          return data;
-        } else {
-          print('[SafeSessionStorage]: ${basename(_file.path)} found missing.');
-          // Go to `catch` block if the [File] was in corrupt state.
-          missing = false;
-          goToCatchBlock();
-        }
-      } else {
-        if (await temp.exists_()) {
-          // Chances are [File] got deleted, then trying to retrieve from the older [write] operations.
-          final contents = await temp.list_(
-            checker: (file) =>
-                basename(file.path).startsWith(basename(_file.path)),
-          );
-          // Sort by modification time in descending order.
-          contents.sort(
-            (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-          );
-          if (contents.isEmpty) {
-            return fallback;
+  Future<dynamic> read() {
+    return lock.synchronized(() async {
+      final temp = Directory(join(_file.parent.path, 'Temp'));
+      // Used to determine if cache was missing or corrupt & show correct logs.
+      var missing = false;
+      var contents = <File>[];
+      try {
+        if (await _file.exists_()) {
+          // Attempt to read & [jsonDecode] data from the actual file.
+          final content = await _file.read_();
+          if (content != null) {
+            final data = jsonDecode(content);
+            return data;
           } else {
             print(
                 '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
-            // Go to `catch` block since there is no entry of [File] in history either.
+            // Go to `catch` block if the [File] was in corrupt state.
             missing = false;
             goToCatchBlock();
           }
         } else {
-          // No history of [File] & neither the actual [File], thus return the [fallback] data.
-          return fallback;
-        }
-      }
-    } catch (exception /* , stacktrace */) {
-      if (!missing) {
-        print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
-      }
-      // [File] was corrupted or couldn't be read.
-      // Lookup in the older I/O transactions & rollback.
-      if (await temp.exists_()) {
-        if (contents.isEmpty) {
-          contents = await temp.list_(
-            checker: (file) =>
-                basename(file.path).startsWith(basename(_file.path)),
-          );
-          // Sort by modification time in descending order.
-          contents.sort(
-            (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-          );
-        }
-        () async {
-          print(
-              '[SafeSessionStorage]: ${contents.map((e) => e.path)} history versions found.');
-        }();
-        for (final file in contents) {
-          print(
-              '[SafeSessionStorage]: Attempting roll-back to ${basename(file.path)}.');
-          try {
-            final content = await file.read_();
-            try {
-              final data = jsonDecode(content!);
-              // Update the existing original [File].
-              //// No `await` needed because `write_` ensures no concurrent write operations.
-              await _file.write_(
-                content,
-                keepTransactionInHistory: false,
-              );
+          if (await temp.exists_()) {
+            // Chances are [File] got deleted, then trying to retrieve from the older [write] operations.
+            final contents = await temp.list_(
+              checker: (file) =>
+                  basename(file.path).startsWith(basename(_file.path)),
+            );
+            // Sort by modification time in descending order.
+            contents.sort(
+              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+            );
+            if (contents.isEmpty) {
+              return fallback;
+            } else {
               print(
-                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
-              return data;
+                  '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
+              // Go to `catch` block since there is no entry of [File] in history either.
+              missing = false;
+              goToCatchBlock();
+            }
+          } else {
+            // No history of [File] & neither the actual [File], thus return the [fallback] data.
+            return fallback;
+          }
+        }
+      } catch (exception /* , stacktrace */) {
+        if (!missing) {
+          print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
+        }
+        // [File] was corrupted or couldn't be read.
+        // Lookup in the older I/O transactions & rollback.
+        if (await temp.exists_()) {
+          if (contents.isEmpty) {
+            contents = await temp.list_(
+              checker: (file) =>
+                  basename(file.path).startsWith(basename(_file.path)),
+            );
+            // Sort by modification time in descending order.
+            contents.sort(
+              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+            );
+          }
+          () async {
+            print(
+                '[SafeSessionStorage]: ${contents.map((e) => e.path)} history versions found.');
+          }();
+          for (final file in contents) {
+            print(
+                '[SafeSessionStorage]: Attempting roll-back to ${basename(file.path)}.');
+            try {
+              final content = await file.read_();
+              try {
+                final data = jsonDecode(content!);
+                // Update the existing original [File].
+                //// No `await` needed because `write_` ensures no concurrent write operations.
+                await _file.write_(
+                  content,
+                  keepTransactionInHistory: false,
+                );
+                print(
+                    '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
+                return data;
+              } catch (exception, stacktrace) {
+                print(exception.toString());
+                print(stacktrace.toString());
+                print(
+                    '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
+              }
             } catch (exception, stacktrace) {
               print(exception.toString());
               print(stacktrace.toString());
-              print(
-                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
             }
-          } catch (exception, stacktrace) {
-            print(exception.toString());
-            print(stacktrace.toString());
           }
         }
       }
-    }
-    return fallback;
+      return fallback;
+    });
   }
 
   void goToCatchBlock() => throw Exception();
 
   final dynamic fallback;
   late final File _file;
-  Completer _completer = Completer()..complete();
+  final lock = Lock();
   static const JsonEncoder _kJsonEncoder = JsonEncoder.withIndent('    ');
 }

@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-
+import 'package:test/test.dart';
 import 'package:collection/collection.dart';
 import 'package:path/path.dart' hide equals;
+
 import 'package:safe_session_storage/safe_session_storage.dart';
-import 'package:test/test.dart';
 
 Future<void> main() async {
   final cacheDirectoryPath = File(Platform.script.toFilePath()).parent.path;
@@ -39,13 +39,17 @@ Future<void> main() async {
       MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isFalse,
+    );
   });
   test('write', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).existsSync(),
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
       isTrue,
     );
     expect(
@@ -72,8 +76,26 @@ Future<void> main() async {
       MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(1),
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      TypeMatcher<File>(),
+    );
+    expect(
+      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
+              as File)
+          .readAsString(),
+      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+    );
   });
-  test('rollback-after-file-missing', () async {
+  test('rollback-after-cache-missing', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
@@ -83,85 +105,172 @@ Future<void> main() async {
       MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(1),
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      TypeMatcher<File>(),
+    );
+    expect(
+      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
+              as File)
+          .readAsString(),
+      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+    );
   });
-  test('rollback-after-file-corrupt', () async {
+  test('rollback-after-cache-corrupt', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
+    // Corrupt the file.
     await File(cacheFilePath).writeAsString('haha!');
     final data = await storage.read();
     expect(
       MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(1),
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      TypeMatcher<File>(),
+    );
+    expect(
+      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
+              as File)
+          .readAsString(),
+      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+    );
   });
-  test('fallback-after-file-and-history-delete', () async {
+  test('fallback-after-cache-and-history-delete', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     await clear();
-    print(await storage.read());
     expect(
       MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
   });
-  // // TODO: Sometimes fail.
-  // test('multiple-write-and-read-isolation-test', () async {
-  //   await clear();
-  //   final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
-  //   final completers = [
-  //     Completer(),
-  //     Completer(),
-  //     Completer(),
-  //   ];
-  //   storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
-  //   storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
-  //   storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
-  //   await Future.wait(completers.map((e) => e.future));
-  //   expect(
-  //     MapEquality().equals(await storage.read(), {'fizz': 'buzz'}),
-  //     isTrue,
-  //   );
-  // });
-  // // TODO: Sometimes fail.
-  // test('cache-rollback-history', () async {
-  //   await clear();
-  //   final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
-  //   await File(cacheFilePath).writeAsString('haha!');
-  //   final contents =
-  //       Directory(join(cacheDirectoryPath, 'Temp')).listSync().cast<File>();
-  //   contents.sort(
-  //     (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-  //   );
-  //   await contents.first.delete();
-  //   expect(
-  //     MapEquality().equals(await storage.read(), {'foo': 'baz'}),
-  //     isTrue,
-  //   );
-  // });
-  // test('fallback-file-delete-empty-history', () async {
-  //   await clear();
-  //   final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
-  //   await File(cacheFilePath).delete();
-  //   for (final file in Directory(join(cacheDirectoryPath, 'Temp')).listSync()) {
-  //     await file.delete();
-  //   }
-  //   expect(
-  //     MapEquality().equals(await storage.read(), fallback),
-  //     isTrue,
-  //   );
-  // });
-  // test('fallback-file-corrupt-empty-history', () async {
-  //   await clear();
-  //   final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
-  //   await File(cacheFilePath).writeAsString('haha!');
-  //   for (final file in Directory(join(cacheDirectoryPath, 'Temp')).listSync()) {
-  //     await file.delete();
-  //   }
-  //   expect(
-  //     MapEquality().equals(await storage.read(), fallback),
-  //     isTrue,
-  //   );
-  // });
+  test('write-mutual-exclusion-and-sequencing', () async {
+    await clear();
+    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final completers = [
+      Completer(),
+      Completer(),
+      Completer(),
+    ];
+    // No `await`. This tests the mutual exclusion of the [SafeSessionStorage.write] method.
+    storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
+    storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
+    storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
+    await Future.wait(completers.map((e) => e.future));
+    expect(
+      MapEquality().equals(await storage.read(), {'fizz': 'buzz'}),
+      isTrue,
+    );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(3),
+    );
+  });
+  test('cache-rollback-history', () async {
+    await clear();
+    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    // Write data.
+    final completers = [
+      Completer(),
+      Completer(),
+      Completer(),
+    ];
+    storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
+    storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
+    storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
+    await Future.wait(completers.map((e) => e.future));
+    // Corrupt file.
+    await File(cacheFilePath).write_('haha!');
+    // Corrupt latest [File] in the history.
+    final contents =
+        Directory(join(cacheDirectoryPath, 'Temp')).listSync().cast<File>();
+    contents.sort(
+      (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
+        int.parse(basename(a.path).split('.').last),
+      ),
+    );
+    // Not using [FileExtension.write_] here because it's not meant to be used to
+    // alter the history versions of the cache file.
+    await contents.first.writeAsString('haha!');
+    // Perform read.
+    final data = await storage.read();
+    expect(
+      MapEquality().equals(data, {'foo': 'baz'}),
+      isTrue,
+    );
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(3),
+    );
+  });
+  test('fallback-cache-delete-empty-history', () async {
+    await clear();
+    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    await storage.write({'foo': 'bar'});
+    // Delete cache file.
+    await clearCacheFile();
+    // Empty the history.
+    await Future.wait(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().map((e) {
+        if (e is File) {
+          return e.delete();
+        } else {
+          return Future.value();
+        }
+      }),
+    );
+    expect(
+      MapEquality().equals(await storage.read(), fallback),
+      isTrue,
+    );
+  });
+  test('fallback-cache-corrupt-empty-history', () async {
+    await clear();
+    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    await storage.write({'foo': 'bar'});
+    // Corrupt the file.
+    await File(cacheFilePath).write_('haha!');
+    // Empty the history.
+    await Future.wait(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().map((e) {
+        if (e is File) {
+          return e.delete();
+        } else {
+          return Future.value();
+        }
+      }),
+    );
+    expect(
+      MapEquality().equals(await storage.read(), fallback),
+      isTrue,
+    );
+  });
 }

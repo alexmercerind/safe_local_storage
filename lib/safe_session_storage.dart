@@ -56,6 +56,8 @@ class SafeSessionStorage {
   /// Reads the cache [File] and returns the contents as `dynamic`.
   Future<dynamic> read() async {
     final temp = Directory(join(_file.parent.path, 'Temp'));
+    // Used to determine if cache was missing or corrupt & show correct logs.
+    var missing = false;
     var contents = <File>[];
     try {
       if (await _file.exists_()) {
@@ -65,7 +67,9 @@ class SafeSessionStorage {
           final data = jsonDecode(content);
           return data;
         } else {
+          print('[SafeSessionStorage]: ${basename(_file.path)} found missing.');
           // Go to `catch` block if the [File] was in corrupt state.
+          missing = false;
           goToCatchBlock();
         }
       } else {
@@ -82,7 +86,10 @@ class SafeSessionStorage {
           if (contents.isEmpty) {
             return fallback;
           } else {
+            print(
+                '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
             // Go to `catch` block since there is no entry of [File] in history either.
+            missing = false;
             goToCatchBlock();
           }
         } else {
@@ -90,11 +97,11 @@ class SafeSessionStorage {
           return fallback;
         }
       }
-    } catch (exception, stacktrace) {
-      print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
+    } catch (exception /* , stacktrace */) {
+      if (!missing) {
+        print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
+      }
       // [File] was corrupted or couldn't be read.
-      print(exception.toString());
-      print(stacktrace.toString());
       // Lookup in the older I/O transactions & rollback.
       if (await temp.exists_()) {
         if (contents.isEmpty) {
@@ -113,7 +120,7 @@ class SafeSessionStorage {
         }();
         for (final file in contents) {
           print(
-              '[SafeSessionStorage]: Attempting revert to ${basename(file.path)}.');
+              '[SafeSessionStorage]: Attempting roll-back to ${basename(file.path)}.');
           try {
             final content = await file.read_();
             try {
@@ -125,13 +132,13 @@ class SafeSessionStorage {
                 keepTransactionInHistory: false,
               );
               print(
-                  '[SafeSessionStorage]: Revert to ${basename(file.path)} successful.');
+                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
               return data;
             } catch (exception, stacktrace) {
               print(exception.toString());
               print(stacktrace.toString());
               print(
-                  '[SafeSessionStorage]: Reverting to ${basename(file.path)} failed.');
+                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
             }
           } catch (exception, stacktrace) {
             print(exception.toString());

@@ -51,7 +51,10 @@ class SafeSessionStorage {
     // Using [Lock] from `package:synchronized` to prevent this.
     // Tests are not failing anymore.
     await lock.synchronized(() async {
-      await _file.write_(_kJsonEncoder.convert(data));
+      await _file.write_(
+        _kJsonEncoder.convert(data),
+        keepTransactionInHistory: true,
+      );
     });
   }
 
@@ -81,11 +84,14 @@ class SafeSessionStorage {
             // Chances are [File] got deleted, then trying to retrieve from the older [write] operations.
             final contents = await temp.list_(
               checker: (file) =>
-                  basename(file.path).startsWith(basename(_file.path)),
+                  basename(file.path).startsWith(basename(_file.path)) &&
+                  !basename(file.path).endsWith('.src'),
             );
             // Sort by modification time in descending order.
             contents.sort(
-              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+              (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
+                int.parse(basename(a.path).split('.').last),
+              ),
             );
             if (contents.isEmpty) {
               return fallback;
@@ -102,6 +108,8 @@ class SafeSessionStorage {
           }
         }
       } catch (exception /* , stacktrace */) {
+        // print(exception.toString());
+        // print(stacktrace.toString());
         if (!missing) {
           print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
         }
@@ -111,16 +119,20 @@ class SafeSessionStorage {
           if (contents.isEmpty) {
             contents = await temp.list_(
               checker: (file) =>
-                  basename(file.path).startsWith(basename(_file.path)),
+                  basename(file.path).startsWith(basename(_file.path)) &&
+                  !basename(file.path).endsWith('.src'),
             );
             // Sort by modification time in descending order.
             contents.sort(
-              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+              (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
+                int.parse(basename(a.path).split('.').last),
+              ),
             );
           }
           () async {
             print(
-                '[SafeSessionStorage]: ${contents.map((e) => e.path)} history versions found.');
+              '[SafeSessionStorage]: ${basename(_file.path)} history versions found:\n${contents.map((e) => e.path).join('\n')}\n',
+            );
           }();
           for (final file in contents) {
             print(
@@ -130,23 +142,19 @@ class SafeSessionStorage {
               try {
                 final data = jsonDecode(content!);
                 // Update the existing original [File].
-                //// No `await` needed because `write_` ensures no concurrent write operations.
-                await _file.write_(
-                  content,
-                  keepTransactionInHistory: false,
-                );
+                await _file.write_(content);
                 print(
                     '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
                 return data;
-              } catch (exception, stacktrace) {
-                print(exception.toString());
-                print(stacktrace.toString());
+              } catch (exception /* , stacktrace */) {
+                // print(exception.toString());
+                // print(stacktrace.toString());
                 print(
                     '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
               }
-            } catch (exception, stacktrace) {
-              print(exception.toString());
-              print(stacktrace.toString());
+            } catch (exception /* , stacktrace */) {
+              // print(exception.toString());
+              // print(stacktrace.toString());
             }
           }
         }

@@ -86,7 +86,7 @@ extension FileExtension on File {
   /// Safely writes [String] [content] to a [File].
   ///
   /// * Does not modify the contents of the original file, but
-  /// creates a new randomly named file & copies it to the
+  /// creates a new randomly named file & renames it to the
   /// original [File]'s path for ensured safety & no possible
   /// corruption. This helps in ensuring the atomicity of the
   /// transaction. Thanks to @raitonoberu for the idea.
@@ -94,6 +94,10 @@ extension FileExtension on File {
   /// * Uses [Completer]s to ensure to concurrent transactions
   /// to the same file path. This helps in ensuring the
   /// isolation & correct sequence of the transaction.
+  ///
+  /// * Two files are created, one for keeping the history of
+  /// the transaction & other is renamed to the original
+  /// cache [File]'s path.
   ///
   Future<void> write_(
     String content, {
@@ -109,26 +113,34 @@ extension FileExtension on File {
               !path.startsWith(r'\\?\')
           ? r'\\?\'
           : '';
-      final file = File(
-        join(
-          prefix + parent.path,
-          'Temp',
-          '${basename(path)}.${const Uuid().v4()}',
+      final files = [
+        // History.
+        File(
+          join(
+            prefix + parent.path,
+            'Temp',
+            '${basename(path)}.${const Uuid().v4()}',
+          ),
         ),
-      );
-      if (!await file.exists_()) {
-        await file.create_();
-      }
-      await file.writeAsString(content, flush: true);
-      if (keepTransactionInHistory) {
-        // Delete the destination [File] if it exists.
-        if (await File(prefix + path).exists_()) {
-          await File(prefix + path).delete_();
+        // Actual file that will be renamed to destination.
+        File(
+          join(
+            prefix + parent.path,
+            'Temp',
+            '${basename(path)}.${const Uuid().v4()}.src',
+          ),
+        )
+      ];
+      await Future.wait(files.asMap().entries.map((e) async {
+        if (keepTransactionInHistory || e.key != 0) {
+          await e.value.create_();
+          await e.value.writeAsString(
+            content,
+            flush: true,
+          );
         }
-        await file.copy_(prefix + path);
-      } else {
-        await file.rename_(prefix + path);
-      }
+      }));
+      await files.last.rename_(prefix + path);
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -207,22 +219,42 @@ extension FileExtension on File {
 extension FileSystemEntityExtension on FileSystemEntity {
   /// Safely deletes a [FileSystemEntity].
   Future<void> delete_() async {
-    if (await exists_()) {
+    // Surround with try/catch instead of using [Directory.exists_],
+    // because it confuses Windows into saying:
+    // "The process cannot access the file because it is being used by another process."
+    try {
       final prefix = Platform.isWindows &&
               !path.startsWith('\\\\') &&
               !path.startsWith(r'\\?\')
           ? r'\\?\'
           : '';
       if (this is File) {
-        await File(prefix + path).delete();
+        await File(prefix + path).delete(recursive: true);
       } else if (this is Directory) {
-        await Directory(prefix + path).delete();
+        final directory = Directory(prefix + path);
+        // TODO: [Directory.delete] is not working with `recursive` as `true`.
+        // Bug in [dart-lang/sdk](https://github.com/dart-lang/sdk/issues/38148).
+        // Adding a workaround for now.
+        if (await directory.exists_()) {
+          final contents = directory.listSync(recursive: true).cast<File>();
+          await Future.wait(
+            contents.map((file) => file.delete_()),
+          );
+        }
+        // This [Future.delayed] is needed for Windows.
+        // Above [Directory.exists_] call confuses it and it returns error saying:
+        // "The process cannot access the file because it is being used by another process."
+        await Future.delayed(const Duration(milliseconds: 100));
+        await directory.delete(recursive: true);
       }
+    } catch (exception /* , stacktrace */) {
+      // print(exception.toString());
+      // print(stacktrace.toString());
     }
   }
 
   /// Safely checks whether a [FileSystemEntity] exists or not.
-  FutureOr<bool> exists_() {
+  Future<bool> exists_() {
     final prefix = Platform.isWindows &&
             !path.startsWith('\\\\') &&
             !path.startsWith(r'\\?\')
@@ -233,7 +265,7 @@ extension FileSystemEntityExtension on FileSystemEntity {
     } else if (this is Directory) {
       return Directory(prefix + path).exists();
     } else {
-      return false;
+      return Future.value(false);
     }
   }
 
@@ -273,8 +305,3 @@ extension FileSystemEntityExtension on FileSystemEntity {
 /// [Map] storing various instances of [Completer] for
 /// mutual exclusion in [FileExtension.write_].
 final Map<String, Completer> _fileWriteMutexes = <String, Completer>{};
-final Map<String, _Counter> _fileWriteConcurrencyCount = <String, _Counter>{};
-
-class _Counter {
-  int count = 0;
-}

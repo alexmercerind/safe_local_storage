@@ -7,6 +7,7 @@ environment:
 dependencies:
   path: ^1.8.2
   uuid: ^3.0.6
+  synchronized: ^3.0.0+2
 
 dev_dependencies:
   lints: ^2.0.0

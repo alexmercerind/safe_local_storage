@@ -27,11 +27,12 @@ Future<void> main() async {
         clearCacheFile(),
         clearCacheHistory(),
       ]);
-
+  print('[test]: creation');
   test('creation', () async {
     await clear();
     SafeSessionStorage(cacheFilePath);
   });
+  print('[test]: empty-read');
   test('empty-read', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -44,6 +45,7 @@ Future<void> main() async {
       isFalse,
     );
   });
+  print('[test]: write');
   test('write', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -67,6 +69,7 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
+  print('[test]: read');
   test('read', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -95,6 +98,7 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
+  print('[test]: rollback-after-cache-missing');
   test('rollback-after-cache-missing', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -124,6 +128,7 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
+  print('[test]: rollback-after-cache-corrupt');
   test('rollback-after-cache-corrupt', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -154,6 +159,7 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
+  print('[test]: fallback-after-cache-and-history-delete');
   test('fallback-after-cache-and-history-delete', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -164,6 +170,7 @@ Future<void> main() async {
       isTrue,
     );
   });
+  print('[test]: write-mutual-exclusion-and-sequencing');
   test('write-mutual-exclusion-and-sequencing', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -190,6 +197,7 @@ Future<void> main() async {
       equals(3),
     );
   });
+  print('[test]: cache-rollback-history');
   test('cache-rollback-history', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -231,6 +239,7 @@ Future<void> main() async {
       equals(3),
     );
   });
+  print('[test]: fallback-cache-delete-empty-history');
   test('fallback-cache-delete-empty-history', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
@@ -252,6 +261,7 @@ Future<void> main() async {
       isTrue,
     );
   });
+  print('[test]: fallback-cache-corrupt-empty-history');
   test('fallback-cache-corrupt-empty-history', () async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);

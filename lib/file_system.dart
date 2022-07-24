@@ -102,10 +102,10 @@ extension FileExtension on File {
     dynamic content, {
     bool keepTransactionInHistory = false,
   }) async {
-    if (_fileWriteMutexes[path] != null) {
-      await _fileWriteMutexes[path]!.future;
+    if (fileMutexes[path] != null) {
+      await fileMutexes[path]!.future;
     }
-    _fileWriteMutexes[path] = Completer();
+    fileMutexes[path] = Completer();
     try {
       final prefix = Platform.isWindows &&
               !path.startsWith('\\\\') &&
@@ -152,14 +152,14 @@ extension FileExtension on File {
       print(exception.toString());
       print(stacktrace.toString());
     }
-    if (!_fileWriteMutexes[path]!.isCompleted) {
-      _fileWriteMutexes[path]!.complete();
+    if (!fileMutexes[path]!.isCompleted) {
+      fileMutexes[path]!.complete();
     }
   }
 
   Future<String?> read_() async {
-    if (_fileWriteMutexes[path] != null) {
-      await _fileWriteMutexes[path]!.future;
+    if (fileMutexes[path] != null) {
+      await fileMutexes[path]!.future;
     }
     if (await exists_()) {
       return await readAsString();
@@ -311,4 +311,4 @@ extension FileSystemEntityExtension on FileSystemEntity {
 
 /// [Map] storing various instances of [Completer] for
 /// mutual exclusion in [FileExtension.write_].
-final Map<String, Completer> _fileWriteMutexes = <String, Completer>{};
+final Map<String, Completer> fileMutexes = <String, Completer>{};

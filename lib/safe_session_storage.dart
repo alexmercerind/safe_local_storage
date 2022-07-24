@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:synchronized/synchronized.dart';
 
+import 'package:safe_session_storage/isolates.dart';
 import 'package:safe_session_storage/file_system.dart';
 export 'package:safe_session_storage/file_system.dart';
 
@@ -67,16 +68,18 @@ class SafeSessionStorage {
       var contents = <File>[];
       try {
         if (await _file.exists_()) {
-          // Attempt to read & [jsonDecode] data from the actual file.
-          final content = await _file.read_();
-          if (content != null) {
-            final data = jsonDecode(content);
+          if (fileMutexes[_file.path] != null) {
+            await fileMutexes[_file.path]!.future;
+          }
+          final data = await compute(_read, _file.path);
+          if (data != null) {
             return data;
           } else {
             print(
-                '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
-            // Go to `catch` block if the [File] was in corrupt state.
-            missing = false;
+              '[SafeSessionStorage]: Technically, this should never show up on the console.',
+            );
+            // Go to `catch` block if the [File] was missing after checking existence.
+            missing = true;
             goToCatchBlock();
           }
         } else {
@@ -135,26 +138,23 @@ class SafeSessionStorage {
             );
           }();
           for (final file in contents) {
-            print(
-                '[SafeSessionStorage]: Attempting roll-back to ${basename(file.path)}.');
             try {
-              final content = await file.read_();
-              try {
-                final data = jsonDecode(content!);
-                // Update the existing original [File].
-                await _file.write_(content);
-                print(
-                    '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
-                return data;
-              } catch (exception /* , stacktrace */) {
-                // print(exception.toString());
-                // print(stacktrace.toString());
-                print(
-                    '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
+              if (fileMutexes[_file.path] != null) {
+                await fileMutexes[_file.path]!.future;
               }
+              final data = await compute(
+                _readRollback,
+                [
+                  file.path,
+                  _file.path,
+                ],
+              );
+              return data;
             } catch (exception /* , stacktrace */) {
               // print(exception.toString());
               // print(stacktrace.toString());
+              print(
+                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
             }
           }
         }
@@ -169,4 +169,42 @@ class SafeSessionStorage {
   late final File _file;
   final lock = Lock();
   static const JsonEncoder _kJsonEncoder = JsonEncoder.withIndent('    ');
+
+  /// Following methods exist for `dart:isolate`.
+  /// For avoiding heavy JSON parsing on the main thread,
+  /// the [File] is read & deserialized in a separate [Isolate].
+  ///
+  /// Since, [fileMutexes] is globally shared to ensure the isolation, but [Isolate]s
+  /// do not share global variables. So, explicitly the [Completer] is checked
+  /// before the [compute] call.
+
+  /// Reads the cache [File] given by [filePath] and returns the contents as `dynamic`.
+  /// Returns `null` if the [File] is missing.
+  static dynamic _read(String filePath) async {
+    // Attempt to read & [jsonDecode] data from the actual [File].
+    final content = await File(filePath).read_();
+    if (content != null) {
+      final data = jsonDecode(content);
+      return data;
+    }
+    return null;
+  }
+
+  /// Attempts to read the history [File] at given by [filePaths]'s first element.
+  /// If the deserialization is successful, then the original [File] is also updated
+  /// to this rollback state (because it was corrupt).
+  /// Here, original [File]'s path is given by [filePaths]'s second element.
+  ///
+  static dynamic _readRollback(List<String> filePaths) async {
+    print(
+        '[SafeSessionStorage]: Attempting roll-back to ${basename(filePaths.first)}.');
+    final file = File(filePaths.first);
+    final content = await file.read_();
+    final data = jsonDecode(content!);
+    print(
+        '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
+    // Update the existing original [File].
+    await File(filePaths.last).write_(content);
+    return data;
+  }
 }

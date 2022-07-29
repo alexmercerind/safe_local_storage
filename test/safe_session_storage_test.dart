@@ -37,7 +37,7 @@ Future<void> main() async {
     await clear();
     final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
     expect(
-      MapEquality().equals(await storage.read(), fallback),
+      const MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
     expect(
@@ -76,7 +76,7 @@ Future<void> main() async {
     await storage.write({'foo': 'bar'});
     final data = await storage.read();
     expect(
-      MapEquality().equals(data, {'foo': 'bar'}),
+      const MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
     expect(
@@ -106,7 +106,7 @@ Future<void> main() async {
     await clearCacheFile();
     final data = await storage.read();
     expect(
-      MapEquality().equals(data, {'foo': 'bar'}),
+      const MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
     expect(
@@ -137,7 +137,7 @@ Future<void> main() async {
     await File(cacheFilePath).writeAsString('haha!');
     final data = await storage.read();
     expect(
-      MapEquality().equals(data, {'foo': 'bar'}),
+      const MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
     expect(
@@ -166,7 +166,7 @@ Future<void> main() async {
     await storage.write({'foo': 'bar'});
     await clear();
     expect(
-      MapEquality().equals(await storage.read(), fallback),
+      const MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
   });
@@ -185,7 +185,7 @@ Future<void> main() async {
     storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
     await Future.wait(completers.map((e) => e.future));
     expect(
-      MapEquality().equals(await storage.read(), {'fizz': 'buzz'}),
+      const MapEquality().equals(await storage.read(), {'fizz': 'buzz'}),
       isTrue,
     );
     expect(
@@ -227,7 +227,7 @@ Future<void> main() async {
     // Perform read.
     final data = await storage.read();
     expect(
-      MapEquality().equals(data, {'foo': 'baz'}),
+      const MapEquality().equals(data, {'foo': 'baz'}),
       isTrue,
     );
     expect(
@@ -257,7 +257,7 @@ Future<void> main() async {
       }),
     );
     expect(
-      MapEquality().equals(await storage.read(), fallback),
+      const MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
   });
@@ -279,8 +279,38 @@ Future<void> main() async {
       }),
     );
     expect(
-      MapEquality().equals(await storage.read(), fallback),
+      const MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
+  });
+  print('[test]: history-transaction-limit');
+  test('history-transaction-limit', () async {
+    await clear();
+    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    await Future.wait(
+      List.generate(
+        20,
+        (index) => storage.write({'foo': 'bar'}),
+      ),
+    );
+    // Wait for the asynchronous suspension to complete.
+    await Future.delayed(const Duration(milliseconds: 100));
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(10),
+    );
+    Directory(join(cacheDirectoryPath, 'Temp')).listSync().forEach(
+          (e) => expect(
+            const MapEquality().equals(
+              jsonDecode((e as File).readAsStringSync()),
+              {'foo': 'bar'},
+            ),
+            isTrue,
+          ),
+        );
   });
 }

@@ -56,6 +56,11 @@ class SafeSessionStorage {
         _kJsonEncoder.convert(data),
         keepTransactionInHistory: true,
       );
+      // Run in asynchronous suspension on another [Isolate].
+      compute(
+        _removeRedundantFileTransactionHistory,
+        _file.path,
+      );
     });
   }
 
@@ -207,4 +212,30 @@ class SafeSessionStorage {
     await File(filePaths.last).write_(content);
     return data;
   }
+
+  static void _removeRedundantFileTransactionHistory(String filePath) async {
+    final temp = Directory(join(File(filePath).parent.path, 'Temp'));
+    if (await temp.exists_()) {
+      final contents = await temp.list_(
+        checker: (file) =>
+            basename(file.path).startsWith(basename(filePath)) &&
+            !basename(file.path).endsWith('.src'),
+      );
+      if (contents.length > _kHistoryTransactionCount) {
+        // Sort by modification time in descending order.
+        contents.sort(
+          (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
+            int.parse(basename(a.path).split('.').last),
+          ),
+        );
+        await Future.wait<void>(
+          contents
+              .skip(_kHistoryTransactionCount)
+              .map((file) => file.delete_()),
+        );
+      }
+    }
+  }
+
+  static const int _kHistoryTransactionCount = 10;
 }

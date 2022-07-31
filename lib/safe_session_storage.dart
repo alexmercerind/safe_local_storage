@@ -97,8 +97,9 @@ class SafeSessionStorage {
             );
             // Sort by modification time in descending order.
             contents.sort(
-              (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
-                int.parse(basename(a.path).split('.').last),
+              (a, b) => (int.tryParse(basename(b.path).split('.').last) ?? -1)
+                  .compareTo(
+                int.tryParse(basename(a.path).split('.').last) ?? -1,
               ),
             );
             if (contents.isEmpty) {
@@ -132,8 +133,9 @@ class SafeSessionStorage {
             );
             // Sort by modification time in descending order.
             contents.sort(
-              (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
-                int.parse(basename(a.path).split('.').last),
+              (a, b) => (int.tryParse(basename(b.path).split('.').last) ?? -1)
+                  .compareTo(
+                int.tryParse(basename(a.path).split('.').last) ?? -1,
               ),
             );
           }
@@ -217,16 +219,24 @@ class SafeSessionStorage {
     final temp = Directory(join(File(filePath).parent.path, 'Temp'));
     if (await temp.exists_()) {
       final contents = await temp.list_(
-        checker: (file) =>
-            basename(file.path).startsWith(basename(filePath)) &&
-            !basename(file.path).endsWith('.src'),
+        checker: (file) => basename(file.path).startsWith(basename(filePath)),
       );
       if (contents.length > _kHistoryTransactionCount) {
         // Sort by modification time in descending order.
         contents.sort(
-          (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
-            int.parse(basename(a.path).split('.').last),
-          ),
+          (a, b) {
+            // Make files ending with `.src` fall to the end.
+            if (basename(b.path).contains('.src')) {
+              return -1 << 32;
+            } else if (basename(a.path).contains('.src')) {
+              return 1 << 32;
+            }
+            // Actual sort.
+            return (int.tryParse(basename(b.path).split('.').last) ?? -1)
+                .compareTo(
+              int.tryParse(basename(a.path).split('.').last) ?? -1,
+            );
+          },
         );
         await Future.wait<void>(
           contents

@@ -8,6 +8,26 @@ import 'dart:io';
 import 'dart:async';
 import 'package:path/path.dart';
 
+abstract class FS {
+  static Future<FileSystemEntityType> type_(String path) {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    return FileSystemEntity.type(prefix + path);
+  }
+
+  static FileSystemEntityType typeSync_(String path) {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    return FileSystemEntity.typeSync(prefix + path);
+  }
+}
+
 extension DirectoryExtension on Directory {
   /// Recursively lists all the present [File]s inside the [Directory].
   ///

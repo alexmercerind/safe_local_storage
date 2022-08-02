@@ -6,6 +6,7 @@
 
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:path/path.dart';
 
 abstract class FS {
@@ -159,7 +160,7 @@ extension FileExtension on File {
               content,
               flush: true,
             );
-          } else if (content is List<int>) {
+          } else if (content is Uint8List) {
             await e.value.writeAsBytes(
               content,
               flush: true,
@@ -177,12 +178,38 @@ extension FileExtension on File {
     }
   }
 
-  Future<String?> read_() async {
+  /// Reads the contents of the [File] as [String].
+  /// Respects the mutual exclusion lock, but does not enforce one itself.
+  FutureOr<String?> read_() async {
     if (fileMutexes[path] != null) {
       await fileMutexes[path]!.future;
     }
-    if (await exists_()) {
-      return await readAsString();
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    if (await file.exists_()) {
+      return file.readAsString();
+    }
+    return null;
+  }
+
+  /// Reads the contents of the [File] as [Uint8List].
+  /// Respects the mutual exclusion lock, but does not enforce one itself.
+  FutureOr<Uint8List?> readAsBytes_() async {
+    if (fileMutexes[path] != null) {
+      await fileMutexes[path]!.future;
+    }
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    if (await file.exists_()) {
+      return file.readAsBytes();
     }
     return null;
   }
@@ -220,6 +247,10 @@ extension FileExtension on File {
               !newPath.startsWith(r'\\?\')
           ? r'\\?\'
           : '';
+      // Delete if some [File] or [Directory] already exists at the newly specified path.
+      if (await File(newPrefix + newPath).exists_()) {
+        await File(newPrefix + newPath).delete_();
+      }
       await File(prefix + path).copy(newPrefix + newPath);
     } catch (exception, stacktrace) {
       print(exception.toString());

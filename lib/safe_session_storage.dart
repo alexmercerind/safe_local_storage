@@ -107,11 +107,11 @@ class SafeSessionStorage {
               print(
                   '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
               // Go to `catch` block since there is no entry of [File] in history either.
-              missing = false;
+              missing = true;
               goToCatchBlock();
             }
           } else {
-            // No history of [File] & neither the actual [File], thus return the [fallback] data.
+            // No transaction-history of [File] & neither the actual [File], thus return the [fallback] data.
             return fallback;
           }
         }

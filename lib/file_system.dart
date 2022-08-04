@@ -272,6 +272,36 @@ extension FileExtension on File {
       print(stacktrace.toString());
     }
   }
+
+  /// Returns the size in bytes of a [File] as `int`.
+  /// Returns `0` if the [File] does not exist.
+  FutureOr<int> size_() async {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    if (await file.exists_()) {
+      return file.length();
+    }
+    return 0;
+  }
+
+  /// Returns the size in bytes of a [File] as `int`.
+  /// Returns `0` if the [File] does not exist.
+  int sizeSync_() {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    if (file.existsSync_()) {
+      return file.lengthSync();
+    }
+    return 0;
+  }
 }
 
 extension FileSystemEntityExtension on FileSystemEntity {
@@ -343,6 +373,7 @@ extension FileSystemEntityExtension on FileSystemEntity {
     }
   }
 
+  /// Shows a [FileSystemEntity] in system file explorer.
   void explore_() async {
     await Process.start(
       Platform.isWindows

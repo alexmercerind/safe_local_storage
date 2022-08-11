@@ -42,6 +42,7 @@ extension DirectoryExtension on Directory {
     // Explicitly restricting to [kSupportedFileTypes] for avoiding long iterations in later operations.
     List<String>? extensions,
     bool Function(File)? checker,
+    int minimumFileSize = 1024 * 1024,
   }) async {
     final prefix = Platform.isWindows &&
             !path.startsWith('\\\\') &&
@@ -65,8 +66,7 @@ extension DirectoryExtension on Directory {
             }
           } else if (extensions != null) {
             if (extensions.contains(event.extension)) {
-              if (await event.length() >
-                  1024 * 1024 /* 1 MB or greater in size. */) {
+              if (await event.length() > minimumFileSize) {
                 files
                     .add(File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
               }

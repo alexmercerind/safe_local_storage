@@ -51,39 +51,46 @@ extension DirectoryExtension on Directory {
         : '';
     final completer = Completer();
     final files = <File>[];
-    Directory(prefix + path)
-        .list(
-      recursive: true,
-      followLinks: false,
-    )
-        .listen(
-      (event) async {
-        if (event is File) {
-          if (checker != null) {
-            final file = File(event.path.substring(prefix.isNotEmpty ? 4 : 0));
-            if (checker(file)) {
-              files.add(file);
-            }
-          } else if (extensions != null) {
-            if (extensions.contains(event.extension)) {
-              if (await event.length() > minimumFileSize) {
-                files
-                    .add(File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
+    try {
+      Directory(prefix + path)
+          .list(
+        recursive: true,
+        followLinks: false,
+      )
+          .listen(
+        (event) async {
+          if (event is File) {
+            if (checker != null) {
+              final file =
+                  File(event.path.substring(prefix.isNotEmpty ? 4 : 0));
+              if (checker(file)) {
+                files.add(file);
               }
+            } else if (extensions != null) {
+              if (extensions.contains(event.extension)) {
+                if (await event.length() > minimumFileSize) {
+                  files.add(
+                      File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
+                }
+              }
+            } else {
+              files.add(File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
             }
-          } else {
-            files.add(File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
           }
-        }
-      },
-      onError: (error) {
-        // For debugging. In case any future error is reported by the users.
-        print(error.toString());
-      },
-      onDone: completer.complete,
-    );
-    await completer.future;
-    return files;
+        },
+        onError: (error) {
+          // For debugging. In case any future error is reported by the users.
+          print(error.toString());
+        },
+        onDone: completer.complete,
+      );
+      await completer.future;
+      return files;
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+      return [];
+    }
   }
 
   /// Safely [create]s a [Directory] recursively.
@@ -343,32 +350,44 @@ extension FileSystemEntityExtension on FileSystemEntity {
 
   /// Safely checks whether a [FileSystemEntity] exists or not.
   Future<bool> exists_() {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    if (this is File) {
-      return File(prefix + path).exists();
-    } else if (this is Directory) {
-      return Directory(prefix + path).exists();
-    } else {
+    try {
+      final prefix = Platform.isWindows &&
+              !path.startsWith('\\\\') &&
+              !path.startsWith(r'\\?\')
+          ? r'\\?\'
+          : '';
+      if (this is File) {
+        return File(prefix + path).exists();
+      } else if (this is Directory) {
+        return Directory(prefix + path).exists();
+      } else {
+        return Future.value(false);
+      }
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
       return Future.value(false);
     }
   }
 
   /// Safely checks whether a [FileSystemEntity] exists or not.
   bool existsSync_() {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    if (this is File) {
-      return File(prefix + path).existsSync();
-    } else if (this is Directory) {
-      return Directory(prefix + path).existsSync();
-    } else {
+    try {
+      final prefix = Platform.isWindows &&
+              !path.startsWith('\\\\') &&
+              !path.startsWith(r'\\?\')
+          ? r'\\?\'
+          : '';
+      if (this is File) {
+        return File(prefix + path).existsSync();
+      } else if (this is Directory) {
+        return Directory(prefix + path).existsSync();
+      } else {
+        return false;
+      }
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
       return false;
     }
   }

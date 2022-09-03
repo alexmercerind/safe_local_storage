@@ -58,7 +58,7 @@ extension DirectoryExtension on Directory {
         followLinks: false,
       )
           .listen(
-        (event) async {
+        (event) {
           if (event is File) {
             if (checker != null) {
               final file =
@@ -68,7 +68,7 @@ extension DirectoryExtension on Directory {
               }
             } else if (extensions != null) {
               if (extensions.contains(event.extension)) {
-                if (await event.length() > minimumFileSize) {
+                if (event.sizeSync_() >= minimumFileSize) {
                   files.add(
                       File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
                 }

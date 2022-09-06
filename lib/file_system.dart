@@ -93,6 +93,60 @@ extension DirectoryExtension on Directory {
     }
   }
 
+  /// Lists the current directory and returns a [List] of [FileSystemEntity]s.
+  ///
+  /// * Safely handles long file-paths on Windows (https://github.com/dart-lang/sdk/issues/27825).
+  /// * Does not terminate on errors e.g. an encounter of `Access Is Denied`.
+  /// * Does not follow links.
+  /// * Does not iterate recursively.
+  /// * Returns [List] of [FileSystemEntity]s present in current [Directory].
+  ///
+  Future<List<FileSystemEntity>> children_() async {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final completer = Completer();
+    final contents = <FileSystemEntity>[];
+    try {
+      Directory(prefix + path)
+          .list(
+        recursive: false,
+        followLinks: false,
+      )
+          .listen(
+        (event) {
+          switch (FS.typeSync_(event.path)) {
+            case FileSystemEntityType.directory:
+              contents.add(
+                Directory(event.path.substring(prefix.isNotEmpty ? 4 : 0)),
+              );
+              break;
+            case FileSystemEntityType.file:
+              contents.add(
+                File(event.path.substring(prefix.isNotEmpty ? 4 : 0)),
+              );
+              break;
+            default:
+              break;
+          }
+        },
+        onError: (error) {
+          // For debugging. In case any future error is reported by the users.
+          print(error.toString());
+        },
+        onDone: completer.complete,
+      );
+      await completer.future;
+      return contents;
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+      return [];
+    }
+  }
+
   /// Safely [create]s a [Directory] recursively.
   Future<void> create_() async {
     try {

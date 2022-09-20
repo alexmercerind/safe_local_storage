@@ -6,7 +6,7 @@
 
 - **Atomic :** A `write` operation either succeeds completely or fails completely, cache is never left in corrupt state.
 - **Safe to concurrency :** Even if multiple async operations call `write` concurrently, correct order & isolation is maintained. 
-- **Roll-back support :** If cache is found corrupt, old state will be restored & data will remain safe. e.g. Safety to:
+- **Roll-back support :** If cache is still found corrupt (due to external cause), old state will be restored & data will remain safe. e.g. Safety to:
   - User closing app in the middle of on-going `write`.
   - Killing your app's process using [Task Manager](https://en.wikipedia.org/wiki/Task_Manager_(Windows)), [`htop`](https://htop.dev/) etc.
   - Power failure.

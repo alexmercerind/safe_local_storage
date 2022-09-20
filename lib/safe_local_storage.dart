@@ -1,4 +1,4 @@
-/// This file is a part of safe_session_storage (https://github.com/alexmercerind/safe_session_storage).
+/// This file is a part of safe_local_storage (https://github.com/alexmercerind/safe_local_storage).
 ///
 /// Copyright (c) 2022, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
 /// All rights reserved.
@@ -10,9 +10,9 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:synchronized/synchronized.dart';
 
-import 'package:safe_session_storage/isolates.dart';
-import 'package:safe_session_storage/file_system.dart';
-export 'package:safe_session_storage/file_system.dart';
+import 'package:safe_local_storage/isolates.dart';
+import 'package:safe_local_storage/file_system.dart';
+export 'package:safe_local_storage/file_system.dart';
 
 /// SafeSessionStorage
 /// ------------------

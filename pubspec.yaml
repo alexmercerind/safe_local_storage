@@ -1,4 +1,4 @@
-name: safe_session_storage
+name: safe_local_storage
 version: 0.0.1
 
 environment:

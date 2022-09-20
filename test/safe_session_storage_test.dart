@@ -1,11 +1,17 @@
+/// This file is a part of safe_local_storage (https://github.com/alexmercerind/safe_local_storage).
+///
+/// Copyright (c) 2022, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
+/// All rights reserved.
+/// Use of this source code is governed by MIT license that can be found in the LICENSE file.
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:test/test.dart';
-import 'package:collection/collection.dart';
 import 'package:path/path.dart' hide equals;
+import 'package:collection/collection.dart';
 
-import 'package:safe_session_storage/safe_session_storage.dart';
+import 'package:safe_local_storage/safe_local_storage.dart';
 
 Future<void> main() async {
   final cacheDirectoryPath = File(Platform.script.toFilePath()).parent.path;

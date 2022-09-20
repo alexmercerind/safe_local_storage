@@ -14,8 +14,8 @@ import 'package:safe_local_storage/isolates.dart';
 import 'package:safe_local_storage/file_system.dart';
 export 'package:safe_local_storage/file_system.dart';
 
-/// SafeSessionStorage
-/// ------------------
+/// SafeLocalStorage
+/// ----------------
 ///
 /// A safe transaction-based atomic, consistent & durable cache manager.
 ///
@@ -37,8 +37,8 @@ export 'package:safe_local_storage/file_system.dart';
 /// * No interleaving of write operations. Atomic transactions are maintained.
 /// * [read] waits until on-going [write] operations are completely finished.
 ///
-class SafeSessionStorage {
-  SafeSessionStorage(
+class SafeLocalStorage {
+  SafeLocalStorage(
     String path, {
     this.fallback = const {},
   }) {
@@ -81,7 +81,7 @@ class SafeSessionStorage {
             return data;
           } else {
             print(
-              '[SafeSessionStorage]: Technically, this should never show up on the console.',
+              '[SafeLocalStorage]: Technically, this should never show up on the console.',
             );
             // Go to `catch` block if the [File] was missing after checking existence.
             missing = true;
@@ -106,7 +106,7 @@ class SafeSessionStorage {
               return fallback;
             } else {
               print(
-                  '[SafeSessionStorage]: ${basename(_file.path)} found missing.');
+                  '[SafeLocalStorage]: ${basename(_file.path)} found missing.');
               // Go to `catch` block since there is no entry of [File] in history either.
               missing = true;
               goToCatchBlock();
@@ -120,7 +120,7 @@ class SafeSessionStorage {
         // print(exception.toString());
         // print(stacktrace.toString());
         if (!missing) {
-          print('[SafeSessionStorage]: ${basename(_file.path)} found corrupt.');
+          print('[SafeLocalStorage]: ${basename(_file.path)} found corrupt.');
         }
         // [File] was corrupted or couldn't be read.
         // Lookup in the older I/O transactions & rollback.
@@ -141,7 +141,7 @@ class SafeSessionStorage {
           }
           () async {
             print(
-              '[SafeSessionStorage]: ${basename(_file.path)} history versions found:\n${contents.map((e) => e.path).join('\n')}\n',
+              '[SafeLocalStorage]: ${basename(_file.path)} history versions found:\n${contents.map((e) => e.path).join('\n')}\n',
             );
           }();
           for (final file in contents) {
@@ -161,7 +161,7 @@ class SafeSessionStorage {
               // print(exception.toString());
               // print(stacktrace.toString());
               print(
-                  '[SafeSessionStorage]: roll-back to ${basename(file.path)} failed.');
+                  '[SafeLocalStorage]: roll-back to ${basename(file.path)} failed.');
             }
           }
         }
@@ -204,12 +204,12 @@ class SafeSessionStorage {
   ///
   static dynamic _readRollback(List<String> filePaths) async {
     print(
-        '[SafeSessionStorage]: Attempting roll-back to ${basename(filePaths.first)}.');
+        '[SafeLocalStorage]: Attempting roll-back to ${basename(filePaths.first)}.');
     final file = File(filePaths.first);
     final content = await file.read_();
     final data = jsonDecode(content!);
     print(
-        '[SafeSessionStorage]: roll-back to ${basename(file.path)} successful.');
+        '[SafeLocalStorage]: roll-back to ${basename(file.path)} successful.');
     // Update the existing original [File].
     await File(filePaths.last).write_(content);
     return data;

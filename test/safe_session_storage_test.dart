@@ -36,12 +36,12 @@ Future<void> main() async {
   print('[test]: creation');
   test('creation', () async {
     await clear();
-    SafeSessionStorage(cacheFilePath);
+    SafeLocalStorage(cacheFilePath);
   });
   print('[test]: empty-read');
   test('empty-read', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     expect(
       const MapEquality().equals(await storage.read(), fallback),
       isTrue,
@@ -54,7 +54,7 @@ Future<void> main() async {
   print('[test]: write');
   test('write', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     expect(
       await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
@@ -78,7 +78,7 @@ Future<void> main() async {
   print('[test]: read');
   test('read', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     final data = await storage.read();
     expect(
@@ -107,7 +107,7 @@ Future<void> main() async {
   print('[test]: rollback-after-cache-missing');
   test('rollback-after-cache-missing', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     await clearCacheFile();
     final data = await storage.read();
@@ -137,7 +137,7 @@ Future<void> main() async {
   print('[test]: rollback-after-cache-corrupt');
   test('rollback-after-cache-corrupt', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     // Corrupt the file.
     await File(cacheFilePath).writeAsString('haha!');
@@ -168,7 +168,7 @@ Future<void> main() async {
   print('[test]: fallback-after-cache-and-history-delete');
   test('fallback-after-cache-and-history-delete', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     await clear();
     expect(
@@ -179,13 +179,13 @@ Future<void> main() async {
   print('[test]: write-mutual-exclusion-and-sequencing');
   test('write-mutual-exclusion-and-sequencing', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     final completers = [
       Completer(),
       Completer(),
       Completer(),
     ];
-    // No `await`. This tests the mutual exclusion of the [SafeSessionStorage.write] method.
+    // No `await`. This tests the mutual exclusion of the [SafeLocalStorage.write] method.
     storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
     storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
     storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
@@ -206,7 +206,7 @@ Future<void> main() async {
   print('[test]: cache-rollback-history');
   test('cache-rollback-history', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     // Write data.
     final completers = [
       Completer(),
@@ -248,7 +248,7 @@ Future<void> main() async {
   print('[test]: fallback-cache-delete-empty-history');
   test('fallback-cache-delete-empty-history', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     // Delete cache file.
     await clearCacheFile();
@@ -270,7 +270,7 @@ Future<void> main() async {
   print('[test]: fallback-cache-corrupt-empty-history');
   test('fallback-cache-corrupt-empty-history', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await storage.write({'foo': 'bar'});
     // Corrupt the file.
     await File(cacheFilePath).write_('haha!');
@@ -292,7 +292,7 @@ Future<void> main() async {
   print('[test]: history-transaction-limit');
   test('history-transaction-limit', () async {
     await clear();
-    final storage = SafeSessionStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
     await Future.wait(
       List.generate(
         20,

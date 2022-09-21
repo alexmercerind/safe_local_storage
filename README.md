@@ -6,7 +6,7 @@
 
 - **Atomic :** A `write` operation either succeeds completely or fails completely, cache is never left in corrupt state.
 - **Safe to concurrency :** Even if multiple async operations call `write` concurrently, correct order & isolation is maintained. 
-- **Roll-back support :** If cache is still found corrupt (due to external cause), old state will be restored & data will remain safe. e.g. Safety to:
+- **Roll-back support :** If cache is still found corrupt (due to external cause), old state will be restored & saved data will remain safe. Safety to:
   - User closing app in the middle of on-going `write`.
   - Killing your app's process using [Task Manager](https://en.wikipedia.org/wiki/Task_Manager_(Windows)), [`htop`](https://htop.dev/) etc.
   - Power failure.
@@ -111,17 +111,30 @@ It's quite hard to believe but [`package:shared_preferences`](https://pub.dev/pa
 
 The [`package:isar`](https://pub.dev/packages/isar) is quite good & seems well built, but I don't need Rust (or additional shared libraries) for something as simple as storing non-relational data. Dart is a natively compiled language & quite fast for the purpose.
 
-There are other packages which can be used to store data on local storage, but they don't provide other things I want:
+There are other packages which can be used to store data on local storage, but they don't provide other things [Harmonoid](https://github.com/harmonoid/harmonoid) wanted:
 
-- I need control over the location where my app stores it's data or cache.
-  Android offers safe [`SharedPreferences`](https://developer.android.com/reference/android/content/SharedPreferences), there's no concept of file location etc. & fine. It's used by used by [`package:shared_preferences`](https://pub.dev/packages/shared_preferences) internally, but Windows & Linux implementation is just unusable.
-- I want my app's cache to never get corrupt.
-  - [Harmonoid](https://github.com/harmonoid/harmonoid) caches user's huge large music library & other important configuration/settings.
-  - Cache needs to remain on disk persistently after first-time indexing.
-  - It needs to be updated after any new music files are added/deleted (which is quite often).
-  - Ensuring that the cache remains in readable state is quite important. 
-- I don't want query support etc. In my source-code, most operations are performed in-memory. Just read/write data & do it safely.
-- I want to be as less platform-specific as possible.
+- Control over the location where app stores it's data or cache.
+- Strong protection to cache corruption due to process-kill, closing app or power failure etc.
+- No query support etc. Just read/write data & do it safely.
+- Being as less platform-specific as possible.
+
+Harmonoid's issues fixed by [`package:safe_local_storage`](https://github.com/harmonoid/safe_local_storage):
+
+- [Harmonoid](https://github.com/harmonoid/harmonoid) caches user's huge large music library & other important configuration/settings.
+- Cache needs to remain on disk persistently after first-time indexing.
+- It needs to be updated after any new music files are added/deleted (which is quite often).
+- Ensuring that the cache remains in readable (un-corrupt) state is quite important. 
+- User ability to manually edit the configuration files using a simple text-editor outside app.
+
+## Performance
+
+There are no query operations etc. It's just for saving persistent app data. Few things to keep in mind: 
+
+- Upon every `write` operation on a `SafeLocalStorage` instance, the data in it is updated & saved on disk atomically & permanently.
+- A history of past 10 transactions in maintained to support roll-back. Upon any failure / corruption, this will be used to restore old state.
+- The chunk of data (passed as argument to `write` method) is serialized on another `Isolate`.
+- The deletion of redundant transaction history is done asynchronously in background on another `Isolate`.
+- Due to additional operations involved in maintaining `write` history records, ensuring mutual exclusion & atomicity, there _can_ be some delay introduced compared to just writing into a [`File`](https://api.dart.dev/stable/2.18.1/dart-io/File-class.html). But, this trade-off is certainly better than having corrupted app-data. 
 
 ## License
 

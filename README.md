@@ -5,10 +5,10 @@
 ## Features
 
 - **Atomic :** A `write` operation either succeeds completely or fails completely, cache is never left in corrupt state.
-- **Safe to concurrency :** Even if multiple async operations call `write` concurrently, correct order & isolation is maintained. 
+- **Safe to concurrency :** Even if multiple async operations call `write` concurrently, correct order & isolation is maintained.
 - **Roll-back support :** If cache is found corrupt, old state will be restored & data will remain safe. e.g. Safety to:
   - User closing app in the middle of on-going `write`.
-  - Killing your app's process using [Task Manager](https://en.wikipedia.org/wiki/Task_Manager_(Windows)), [`htop`](https://htop.dev/) etc.
+  - Killing your app's process using [Task Manager](<https://en.wikipedia.org/wiki/Task_Manager_(Windows)>), [`htop`](https://htop.dev/) etc.
   - Power failure.
 - **Minimal :** It's written in 100% Dart, there are no native calls. Just reads/writes your JSON data in a very safe manner.
 - **Customizable cache location :** You decide where your app's cache is kept, matching your project's model.
@@ -40,6 +40,7 @@ print(data);
 ### Fallback
 
 Set the fallback value. This is returned by the `read` if:
+
 - No existing cache is found.
 - Cache was found in corrupt state & roll-back failed (never going to happen).
 
@@ -56,9 +57,25 @@ print(await storage.read());
 /// {default_value: 0, msg: No existing cache found.}
 ```
 
+### Delete
+
+Remove the cache file & clean-up the transaction records & history.
+
+```dart
+final storage = SafeLocalStorage(
+  '/path/to/your/cache/file.json',
+);
+await storage.write(
+  {
+    'foo': 'bar',
+  },
+);
+await storage.delete();
+```
+
 ### Location
 
-Giving raw control over the cache's location is a good thing for some. 
+Giving raw control over the cache's location is a good thing for some.
 
 Generally speaking, you can use this getter to get location for a new cache file in your app:
 
@@ -119,7 +136,7 @@ There are other packages which can be used to store data on local storage, but t
   - [Harmonoid](https://github.com/harmonoid/harmonoid) caches user's huge large music library & other important configuration/settings.
   - Cache needs to remain on disk persistently after first-time indexing.
   - It needs to be updated after any new music files are added/deleted (which is quite often).
-  - Ensuring that the cache remains in readable state is quite important. 
+  - Ensuring that the cache remains in readable state is quite important.
 - I don't want query support etc. In my source-code, most operations are performed in-memory. Just read/write data & do it safely.
 - I want to be as less platform-specific as possible.
 

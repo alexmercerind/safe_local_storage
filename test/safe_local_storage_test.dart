@@ -33,12 +33,10 @@ Future<void> main() async {
         clearCacheFile(),
         clearCacheHistory(),
       ]);
-  print('[test]: creation');
   test('creation', () async {
     await clear();
     SafeLocalStorage(cacheFilePath);
   });
-  print('[test]: empty-read');
   test('empty-read', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -51,7 +49,6 @@ Future<void> main() async {
       isFalse,
     );
   });
-  print('[test]: write');
   test('write', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -75,7 +72,6 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
-  print('[test]: read');
   test('read', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -104,7 +100,6 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
-  print('[test]: rollback-after-cache-missing');
   test('rollback-after-cache-missing', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -134,7 +129,6 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
-  print('[test]: rollback-after-cache-corrupt');
   test('rollback-after-cache-corrupt', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -165,7 +159,6 @@ Future<void> main() async {
       equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
     );
   });
-  print('[test]: fallback-after-cache-and-history-delete');
   test('fallback-after-cache-and-history-delete', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -176,7 +169,6 @@ Future<void> main() async {
       isTrue,
     );
   });
-  print('[test]: write-mutual-exclusion-and-sequencing');
   test('write-mutual-exclusion-and-sequencing', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -203,7 +195,6 @@ Future<void> main() async {
       equals(3),
     );
   });
-  print('[test]: cache-rollback-history');
   test('cache-rollback-history', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -245,7 +236,6 @@ Future<void> main() async {
       equals(3),
     );
   });
-  print('[test]: fallback-cache-delete-empty-history');
   test('fallback-cache-delete-empty-history', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -267,7 +257,6 @@ Future<void> main() async {
       isTrue,
     );
   });
-  print('[test]: fallback-cache-corrupt-empty-history');
   test('fallback-cache-corrupt-empty-history', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -289,7 +278,6 @@ Future<void> main() async {
       isTrue,
     );
   });
-  print('[test]: history-transaction-limit');
   test('history-transaction-limit', () async {
     await clear();
     final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
@@ -318,5 +306,38 @@ Future<void> main() async {
             isTrue,
           ),
         );
+  });
+  test('delete', () async {
+    await clear();
+    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    await Future.wait(
+      List.generate(
+        20,
+        (index) => storage.write({'foo': 'bar'}),
+      ),
+    );
+    // Wait for the asynchronous suspension to complete.
+    await Future.delayed(const Duration(milliseconds: 100));
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(10),
+    );
+    await storage.delete();
+    expect(
+      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      isTrue,
+    );
+    expect(
+      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      equals(0),
+    );
+    expect(
+      await File(cacheFilePath).exists_(),
+      isFalse,
+    );
   });
 }

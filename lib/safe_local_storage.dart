@@ -85,7 +85,7 @@ class SafeLocalStorage {
             );
             // Go to `catch` block if the [File] was missing after checking existence.
             missing = true;
-            goToCatchBlock();
+            throw Exception('This should never happen.');
           }
         } else {
           if (await temp.exists_()) {
@@ -109,7 +109,7 @@ class SafeLocalStorage {
                   '[SafeLocalStorage]: ${basename(_file.path)} found missing.');
               // Go to `catch` block since there is no entry of [File] in history either.
               missing = true;
-              goToCatchBlock();
+              throw Exception('${_file.path} not found. Attempting roll-back.');
             }
           } else {
             // No transaction-history of [File] & neither the actual [File], thus return the [fallback] data.
@@ -170,12 +170,26 @@ class SafeLocalStorage {
     });
   }
 
-  void goToCatchBlock() => throw Exception();
+  /// Deletes the cache [File] as well as any transaction records.
+  Future<void> delete() {
+    return lock.synchronized(() async {
+      try {
+        await _delete(_file.path);
+      } catch (exception /* , stacktrace */) {
+        // print(exception.toString());
+        // print(stacktrace.toString());
+      }
+    });
+  }
 
+  /// The fallback data to be returned in case the cache [File] is missing or in un-recoverable corrupt state.
   final dynamic fallback;
-  late final File _file;
+
+  /// [Lock] for ensuring mutual exclusion of [read] & [write] operations.
   final lock = Lock();
-  static const JsonEncoder _kJsonEncoder = JsonEncoder.withIndent('    ');
+
+  /// Initialized in the constructor.
+  late final File _file;
 
   /// Following methods exist for `dart:isolate`.
   /// For avoiding heavy JSON parsing on the main thread,
@@ -215,6 +229,7 @@ class SafeLocalStorage {
     return data;
   }
 
+  /// Limits the number of transaction-history files to [_kHistoryTransactionCount].
   static void _removeRedundantFileTransactionHistory(String filePath) async {
     final temp = Directory(join(File(filePath).parent.path, 'Temp'));
     if (await temp.exists_()) {
@@ -247,5 +262,21 @@ class SafeLocalStorage {
     }
   }
 
-  static const int _kHistoryTransactionCount = 10;
+  /// Deletes the cache [File] as well as any transaction records.
+  static Future<void> _delete(String filePath) async {
+    final file = File(filePath);
+    await file.delete_();
+    final temp = Directory(join(file.parent.path, 'Temp'));
+    if (await temp.exists_()) {
+      final contents = await temp.list_(
+        checker: (file) => basename(file.path).startsWith(basename(filePath)),
+      );
+      await Future.wait<void>(
+        contents.map((file) => file.delete_()),
+      );
+    }
+  }
 }
+
+const int _kHistoryTransactionCount = 10;
+const JsonEncoder _kJsonEncoder = JsonEncoder.withIndent('    ');

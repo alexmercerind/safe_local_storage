@@ -363,6 +363,46 @@ extension FileExtension on File {
     }
     return 0;
   }
+
+  /// Returns the last modified time of a [File] as [DateTime].
+  /// Returns `null` if the [File] does not exist.
+  FutureOr<DateTime?> lastModified_() async {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    try {
+      if (await file.exists_()) {
+        return file.lastModified();
+      }
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+    }
+    return null;
+  }
+
+  /// Returns the last modified time of a [File] as [DateTime].
+  /// Returns `null` if the [File] does not exist.
+  DateTime? lastModifiedSync_() {
+    final prefix = Platform.isWindows &&
+            !path.startsWith('\\\\') &&
+            !path.startsWith(r'\\?\')
+        ? r'\\?\'
+        : '';
+    final file = File(prefix + path);
+    try {
+      if (file.existsSync_()) {
+        return file.lastModifiedSync();
+      }
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+    }
+    return null;
+  }
 }
 
 extension FileSystemEntityExtension on FileSystemEntity {

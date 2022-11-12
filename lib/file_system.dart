@@ -486,19 +486,42 @@ extension FileSystemEntityExtension on FileSystemEntity {
     }
   }
 
-  /// Shows a [FileSystemEntity] in system file explorer.
+  /// Shows a [FileSystemEntity] in the system's default file explorer.
+  ///
+  /// Opens a new external file explorer window with the [FileSystemEntity] selected.
+  ///
   void explore_() async {
-    await Process.start(
-      Platform.isWindows
-          ? 'explorer.exe'
-          : Platform.isLinux
-              ? 'xdg-open'
-              : 'open',
-      Platform.isWindows ? ['/select,', path] : [parent.path],
-      runInShell: true,
-      includeParentEnvironment: true,
-      mode: ProcessStartMode.detached,
-    );
+    if (Platform.isWindows) {
+      await Process.start(
+        'explorer.exe',
+        [
+          '/select,',
+          path,
+        ],
+        runInShell: true,
+        includeParentEnvironment: true,
+        mode: ProcessStartMode.detached,
+      );
+    }
+    if (Platform.isLinux) {
+      await Process.start(
+        'dbus-send',
+        [
+          '--session',
+          '--print-reply',
+          '--dest=org.freedesktop.FileManager1',
+          '--type=method_call',
+          '/org/freedesktop/FileManager1',
+          'org.freedesktop.FileManager1.ShowItems',
+          'array:string:$uri',
+          'string:""',
+        ],
+        runInShell: true,
+        includeParentEnvironment: true,
+        mode: ProcessStartMode.detached,
+      );
+    }
+    // TODO: Support other platforms.
   }
 
   String get extension => basename(path).split('.').last.toUpperCase();

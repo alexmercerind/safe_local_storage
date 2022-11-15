@@ -9,23 +9,30 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:path/path.dart';
 
+/// Prefix needed on Windows for safely accessing local storage with long file path support.
+const String _kWindowsLongFileSystemPathPrefix = '\\\\?\\';
+
+/// Adds `\\?\` prefix to the path if it is not already added & ensures all separators are `\\` on Windows.
+String _clean(String path) {
+  // Network drives & NAS paths seem to start with `\\` & do not support `\\?\` prefix.
+  final prefix = Platform.isWindows &&
+          !path.startsWith('\\\\') &&
+          !path.startsWith(_kWindowsLongFileSystemPathPrefix)
+      ? _kWindowsLongFileSystemPathPrefix
+      : '';
+  if (Platform.isWindows) {
+    path = path.replaceAll('/', '\\');
+  }
+  return prefix + path;
+}
+
 abstract class FS {
   static Future<FileSystemEntityType> type_(String path) {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    return FileSystemEntity.type(prefix + path);
+    return FileSystemEntity.type(_clean(path));
   }
 
   static FileSystemEntityType typeSync_(String path) {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    return FileSystemEntity.typeSync(prefix + path);
+    return FileSystemEntity.typeSync(_clean(path));
   }
 }
 
@@ -37,22 +44,18 @@ extension DirectoryExtension on Directory {
   /// * Does not follow links.
   /// * Returns only [List] of [File]s.
   ///
+  /// The arguments [extensions], [checker] or [minimumFileSize] may be used to filter the resultings [File]s.
+  ///
   Future<List<File>> list_({
-    // Not a good way, but whatever for performance.
-    // Explicitly restricting to [kSupportedFileTypes] for avoiding long iterations in later operations.
     List<String>? extensions,
     bool Function(File)? checker,
     int minimumFileSize = 1024 * 1024,
   }) async {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
     final completer = Completer();
     final files = <File>[];
     try {
-      Directory(prefix + path)
+      final directory = Directory(_clean(path));
+      directory
           .list(
         recursive: true,
         followLinks: false,
@@ -60,21 +63,25 @@ extension DirectoryExtension on Directory {
           .listen(
         (event) {
           if (event is File) {
+            final file = File(
+              event.path.substring(
+                event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
+                    ? 4
+                    : 0,
+              ),
+            );
             if (checker != null) {
-              final file =
-                  File(event.path.substring(prefix.isNotEmpty ? 4 : 0));
               if (checker(file)) {
                 files.add(file);
               }
             } else if (extensions != null) {
               if (extensions.contains(event.extension)) {
                 if (event.sizeSync_() >= minimumFileSize) {
-                  files.add(
-                      File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
+                  files.add(file);
                 }
               }
             } else {
-              files.add(File(event.path.substring(prefix.isNotEmpty ? 4 : 0)));
+              files.add(file);
             }
           }
         },
@@ -102,15 +109,10 @@ extension DirectoryExtension on Directory {
   /// * Returns [List] of [FileSystemEntity]s present in current [Directory].
   ///
   Future<List<FileSystemEntity>> children_() async {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
     final completer = Completer();
     final contents = <FileSystemEntity>[];
     try {
-      Directory(prefix + path)
+      Directory(_clean(path))
           .list(
         recursive: false,
         followLinks: false,
@@ -120,12 +122,24 @@ extension DirectoryExtension on Directory {
           switch (FS.typeSync_(event.path)) {
             case FileSystemEntityType.directory:
               contents.add(
-                Directory(event.path.substring(prefix.isNotEmpty ? 4 : 0)),
+                Directory(
+                  event.path.substring(
+                    event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
+                        ? 4
+                        : 0,
+                  ),
+                ),
               );
               break;
             case FileSystemEntityType.file:
               contents.add(
-                File(event.path.substring(prefix.isNotEmpty ? 4 : 0)),
+                File(
+                  event.path.substring(
+                    event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
+                        ? 4
+                        : 0,
+                  ),
+                ),
               );
               break;
             default:
@@ -150,12 +164,7 @@ extension DirectoryExtension on Directory {
   /// Safely [create]s a [Directory] recursively.
   Future<void> create_() async {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
-      await Directory(prefix + path).create(recursive: true);
+      await Directory(_clean(path)).create(recursive: true);
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -189,17 +198,12 @@ extension FileExtension on File {
     }
     fileMutexes[path] = Completer();
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
       final id = DateTime.now().millisecondsSinceEpoch;
       final files = [
-        // History.
+        // Transaction history file.
         File(
           join(
-            prefix + parent.path,
+            _clean(parent.path),
             'Temp',
             '${basename(path)}.$id',
           ),
@@ -207,7 +211,7 @@ extension FileExtension on File {
         // Actual file that will be renamed to destination.
         File(
           join(
-            prefix + parent.path,
+            _clean(parent.path),
             'Temp',
             '${basename(path)}.$id.src',
           ),
@@ -229,7 +233,8 @@ extension FileExtension on File {
           }
         }
       }));
-      await files.last.rename_(prefix + path);
+      // To ensure atomicity of the transaction.
+      await files.last.rename_(_clean(path));
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -245,12 +250,7 @@ extension FileExtension on File {
     if (fileMutexes[path] != null) {
       await fileMutexes[path]!.future;
     }
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     if (await file.exists_()) {
       return file.readAsString();
     }
@@ -263,12 +263,7 @@ extension FileExtension on File {
     if (fileMutexes[path] != null) {
       await fileMutexes[path]!.future;
     }
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     if (await file.exists_()) {
       return file.readAsBytes();
     }
@@ -278,17 +273,7 @@ extension FileExtension on File {
   /// Safely [rename]s a [File].
   Future<void> rename_(String newPath) async {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
-      final newPrefix = Platform.isWindows &&
-              !newPath.startsWith('\\\\') &&
-              !newPath.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
-      await File(prefix + path).rename(newPrefix + newPath);
+      await File(_clean(path)).rename(_clean(newPath));
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -298,21 +283,11 @@ extension FileExtension on File {
   /// Safely [copy] a [File].
   Future<void> copy_(String newPath) async {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
-      final newPrefix = Platform.isWindows &&
-              !newPath.startsWith('\\\\') &&
-              !newPath.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
       // Delete if some [File] or [Directory] already exists at the newly specified path.
-      if (await File(newPrefix + newPath).exists_()) {
-        await File(newPrefix + newPath).delete_();
+      if (await File(_clean(newPath)).exists_()) {
+        await File(_clean(newPath)).delete_();
       }
-      await File(prefix + path).copy(newPrefix + newPath);
+      await File(_clean(path)).copy(_clean(newPath));
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -322,12 +297,7 @@ extension FileExtension on File {
   /// Safely [create]s a [File] recursively.
   Future<void> create_() async {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
-      await File(prefix + path).create(recursive: true);
+      await File(_clean(path)).create(recursive: true);
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -337,12 +307,7 @@ extension FileExtension on File {
   /// Returns the size in bytes of a [File] as `int`.
   /// Returns `0` if the [File] does not exist.
   FutureOr<int> size_() async {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     if (await file.exists_()) {
       return file.length();
     }
@@ -352,12 +317,7 @@ extension FileExtension on File {
   /// Returns the size in bytes of a [File] as `int`.
   /// Returns `0` if the [File] does not exist.
   int sizeSync_() {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     if (file.existsSync_()) {
       return file.lengthSync();
     }
@@ -367,12 +327,7 @@ extension FileExtension on File {
   /// Returns the last modified time of a [File] as [DateTime].
   /// Returns `null` if the [File] does not exist.
   FutureOr<DateTime?> lastModified_() async {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     try {
       if (await file.exists_()) {
         return file.lastModified();
@@ -387,12 +342,7 @@ extension FileExtension on File {
   /// Returns the last modified time of a [File] as [DateTime].
   /// Returns `null` if the [File] does not exist.
   DateTime? lastModifiedSync_() {
-    final prefix = Platform.isWindows &&
-            !path.startsWith('\\\\') &&
-            !path.startsWith(r'\\?\')
-        ? r'\\?\'
-        : '';
-    final file = File(prefix + path);
+    final file = File(_clean(path));
     try {
       if (file.existsSync_()) {
         return file.lastModifiedSync();
@@ -412,15 +362,10 @@ extension FileSystemEntityExtension on FileSystemEntity {
     // because it confuses Windows into saying:
     // "The process cannot access the file because it is being used by another process."
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
       if (this is File) {
-        await File(prefix + path).delete(recursive: true);
+        await File(_clean(path)).delete(recursive: true);
       } else if (this is Directory) {
-        final directory = Directory(prefix + path);
+        final directory = Directory(_clean(path));
         // TODO: [Directory.delete] is not working with `recursive` as `true`.
         // Bug in [dart-lang/sdk](https://github.com/dart-lang/sdk/issues/38148).
         // Adding a workaround for now.
@@ -436,24 +381,18 @@ extension FileSystemEntityExtension on FileSystemEntity {
         await Future.delayed(const Duration(milliseconds: 100));
         await directory.delete(recursive: true);
       }
-    } catch (exception /* , stacktrace */) {
-      // print(exception.toString());
-      // print(stacktrace.toString());
+    } catch (exception) {
+      // NO;OP
     }
   }
 
   /// Safely checks whether a [FileSystemEntity] exists or not.
   Future<bool> exists_() {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
       if (this is File) {
-        return File(prefix + path).exists();
+        return File(_clean(path)).exists();
       } else if (this is Directory) {
-        return Directory(prefix + path).exists();
+        return Directory(_clean(path)).exists();
       } else {
         return Future.value(false);
       }
@@ -467,15 +406,10 @@ extension FileSystemEntityExtension on FileSystemEntity {
   /// Safely checks whether a [FileSystemEntity] exists or not.
   bool existsSync_() {
     try {
-      final prefix = Platform.isWindows &&
-              !path.startsWith('\\\\') &&
-              !path.startsWith(r'\\?\')
-          ? r'\\?\'
-          : '';
       if (this is File) {
-        return File(prefix + path).existsSync();
+        return File(_clean(path)).existsSync();
       } else if (this is Directory) {
-        return Directory(prefix + path).existsSync();
+        return Directory(_clean(path)).existsSync();
       } else {
         return false;
       }
@@ -496,7 +430,9 @@ extension FileSystemEntityExtension on FileSystemEntity {
         'explorer.exe',
         [
           '/select,',
-          path,
+          path.startsWith(_kWindowsLongFileSystemPathPrefix)
+              ? path.substring(4)
+              : path,
         ],
         runInShell: true,
         includeParentEnvironment: true,

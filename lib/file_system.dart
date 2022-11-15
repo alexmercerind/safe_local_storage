@@ -1,9 +1,3 @@
-/// This file is a part of safe_local_storage (https://github.com/alexmercerind/safe_local_storage).
-///
-/// Copyright (c) 2022, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
-/// All rights reserved.
-/// Use of this source code is governed by MIT license that can be found in the LICENSE file.
-
 import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
@@ -44,7 +38,7 @@ extension DirectoryExtension on Directory {
   /// * Does not follow links.
   /// * Returns only [List] of [File]s.
   ///
-  /// The arguments [extensions], [checker] or [minimumFileSize] may be used to filter the resultings [File]s.
+  /// The arguments [extensions], [checker] or [minimumFileSize] may be used to filter the resulting [File]s.
   ///
   Future<List<File>> list_({
     List<String>? extensions,
@@ -176,14 +170,14 @@ extension FileExtension on File {
   /// Safely writes [String] [content] to a [File].
   ///
   /// * Does not modify the contents of the original file, but
-  /// creates a new randomly named file & renames it to the
-  /// original [File]'s path for ensured safety & no possible
-  /// corruption. This helps in ensuring the atomicity of the
-  /// transaction. Thanks to @raitonoberu for the idea.
+  /// creates a new [File] & renames it to the original [File]'s
+  /// path for ensuring safety.
+  /// This helps in ensuring the atomicity of the transaction.
+  /// Thanks to @raitonoberu for the idea.
   ///
   /// * Uses [Completer]s to ensure to concurrent transactions
-  /// to the same file path. This helps in ensuring the
-  /// isolation & correct sequence of the transaction.
+  /// to the same file path do not conflict. This ensures the
+  /// mutual exclusion.
   ///
   /// * Two files are created, one for keeping the history of
   /// the transaction & other is renamed to the original

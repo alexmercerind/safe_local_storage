@@ -88,7 +88,7 @@ Giving raw control over the cache's location is a good thing for some.
 
 Generally speaking, you can use this getter to get location for a new cache file in your app:
 
-Still, it's not a good idea to store all the data in one single file.
+Still, it's not a good idea to store all the values in one single file.
 
 ```dart
 import 'dart:io';
@@ -133,7 +133,7 @@ First of all, this is built with requirements of [Harmonoid](https://github.com/
 
 I'm aware there are _good_ solutions available like [`package:isar`](https://pub.dev/packages/isar) & many more.
 
-It's quite hard to believe but [`package:shared_preferences`](https://pub.dev/packages/shared_preferences) on Windows & Linux, just [treats your cache like any normal text file](https://github.com/flutter/plugins/blob/main/packages/shared_preferences/shared_preferences_windows/lib/shared_preferences_windows.dart). This makes your app's cache very-very prone to get corrupted. Your saved data will eventually get corrupted (with higher chances if you store large amount data) & there will be no way to bring it back. Secondly, it just keeps all the data in one single file, making the matters even worse. There's no atomicity, isolation or roll-back support. It's a really bad choice when building something useful, atleast on Windows or Linux.
+It's quite hard to believe but [`package:shared_preferences`](https://pub.dev/packages/shared_preferences) on Windows & Linux, just [treats your cache like any normal text file](https://github.com/flutter/plugins/blob/main/packages/shared_preferences/shared_preferences_windows/lib/shared_preferences_windows.dart). This makes your app's cache very-very prone to get corrupted. Your saved values will eventually get corrupted (with higher chances if you store large amount data) & there will be no way to bring it back. Secondly, it just keeps all the values in one single file, making the matters even worse. There's no atomicity, isolation or roll-back support. It's a really bad choice when building something useful, atleast on Windows or Linux.
 
 The [`package:isar`](https://pub.dev/packages/isar) is quite good & seems well built, but I don't need Rust (or additional shared libraries) for something as simple as storing non-relational data. Dart is a natively compiled language & quite fast for the purpose.
 

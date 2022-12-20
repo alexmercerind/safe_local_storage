@@ -1,20 +1,29 @@
-# [safe_local_storage](https://github.com/alexmercerind/safe_local_storage)
+# [package:safe_local_storage](https://github.com/alexmercerind/safe_local_storage)
 
-**🗃️ A safe caching library to read/write data on local storage.**
+🗃️ A safe caching library to read/write values on local storage.
 
 ## Features
 
-- **Atomic :** A `write` operation either succeeds completely or fails completely, cache is never left in corrupt state.
-- **Safe to concurrency :** Even if multiple async operations call `write` concurrently, correct order & isolation is maintained.
-- **Roll-back support :** If cache is still found corrupt (due to external cause), old state will be restored & saved data will remain safe. Safety to:
-  - User closing app in the middle of on-going `write`.
-  - Killing your app's process using [Task Manager](<https://en.wikipedia.org/wiki/Task_Manager_(Windows)>), [`htop`](https://htop.dev/) etc.
+- **Atomic :** A `write` either succeeds completely or fails completely, cache is never left in corrupt state.
+- **Safe to concurrency :** Multiple concurrent async `write` operations keep correct order & isolation is maintained.
+- **Roll-back support :** In case of corruption, old state will be restored & saved values will remain safe. Safety to:
+  - Closing application in the middle of on-going `write`.
+  - Forcibly killing process.
   - Power failure.
-- **Minimal :** It's written in 100% Dart, there are no native calls. Just reads/writes your JSON data in a very safe manner.
+- **Minimal :** 100% Dart, are no native calls. Just reads/writes your values in a very safe manner.
 - **Customizable cache location :** You decide where your app's cache is kept, matching your project's model.
 - **Isolate friendly :** Data is deserialized/serialized on another isolate during `read` or `write`.
-- **Well tested :** [Learn more](https://github.com/harmonoid/safe_local_storage/blob/master/test/safe_session_storage_test.dart).
+- **Well tested :** [Learn more](https://github.com/harmonoid/safe_local_storage/blob/master/test/safe_local_storage_test.dart).
 - **Correctly handles long file-paths on Windows :** [Learn more](https://github.com/dart-lang/sdk/issues/27825).
+
+## Install
+
+Add in your `pubspec.yaml`.
+
+```yaml
+dependencies:
+  safe_local_storage: ^1.0.0
+```
 
 ## Example
 
@@ -122,7 +131,7 @@ String get location {
 
 First of all, this is built with requirements of [Harmonoid](https://github.com/harmonoid/harmonoid) in mind.
 
-I'm aware there are _good_ solutions available like [`package:shared_preferences`](https://pub.dev/packages/shared_preferences) or [`package:isar`](https://pub.dev/packages/isar) & many more.
+I'm aware there are _good_ solutions available like [`package:isar`](https://pub.dev/packages/isar) & many more.
 
 It's quite hard to believe but [`package:shared_preferences`](https://pub.dev/packages/shared_preferences) on Windows & Linux, just [treats your cache like any normal text file](https://github.com/flutter/plugins/blob/main/packages/shared_preferences/shared_preferences_windows/lib/shared_preferences_windows.dart). This makes your app's cache very-very prone to get corrupted. Your saved data will eventually get corrupted (with higher chances if you store large amount data) & there will be no way to bring it back. Secondly, it just keeps all the data in one single file, making the matters even worse. There's no atomicity, isolation or roll-back support. It's a really bad choice when building something useful, atleast on Windows or Linux.
 

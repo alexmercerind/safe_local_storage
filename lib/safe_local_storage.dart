@@ -19,49 +19,20 @@ export 'package:safe_local_storage/file_system.dart';
 ///
 /// A safe transaction-based atomic, consistent & durable cache manager.
 ///
-/// Pass [path] to the constructor to specify the location of the cache [File].
-///
-/// An attempt at implementing [ACID semantics](https://en.wikipedia.org/wiki/ACID).
-///
-/// **Methods:**
-///
-/// * [write]: Writes the [data] to the cache [File].
-/// * [read]: Reads the cache [File] and returns the contents as `dynamic`.
-///
-/// **Features:**
-///
-/// * In case the cache [File] is found in corrupt state, the old [write] operations
-///   performed on the [File] are looked-up & the cache is rolled-back to the state
-///   before the corruption.
-/// * No concurrent write operations on the cache. Isolation is maintained.
-/// * No interleaving of write operations. Atomic transactions are maintained.
-/// * [read] waits until on-going [write] operations are completely finished.
-///
 class SafeLocalStorage {
   SafeLocalStorage(
     String path, {
     this.fallback = const {},
-  }) {
-    _file = File(path);
-  }
+  }) : _file = File(clean(path));
 
   /// Writes the [data] to the cache [File].
   Future<void> write(dynamic data) async {
-    // NOTE: Even though, [File.write_] is made mutually exclusive using [Completer],
-    // it still enters critical section at the same time, sometimes.
-    // Using [Lock] from `package:synchronized` to prevent this.
-    // Tests are not failing anymore.
-    await lock.synchronized(() async {
-      await _file.write_(
-        _kJsonEncoder.convert(data),
-        keepTransactionInHistory: true,
-      );
-      // Run in asynchronous suspension on another [Isolate].
-      compute(
-        _removeRedundantFileTransactionHistory,
-        _file.path,
-      );
-    });
+    await _file.write_(_kJsonEncoder.convert(data), history: true);
+    // Run in asynchronous suspension of another [Isolate].
+    compute(
+      _removeRedundantFileTransactionHistory,
+      _file.path,
+    );
   }
 
   /// Reads the cache [File] and returns the contents as `dynamic`.
@@ -73,25 +44,26 @@ class SafeLocalStorage {
       var contents = <File>[];
       try {
         if (await _file.exists_()) {
-          if (fileMutexes[_file.path] != null) {
-            await fileMutexes[_file.path]!.future;
-          }
-          final data = await compute(_read, _file.path);
-          if (data != null) {
-            return data;
-          } else {
-            print(
-              '[SafeLocalStorage]: Technically, this should never show up on the console.',
-            );
-            // Go to `catch` block if the [File] was missing after checking existence.
-            missing = true;
-            throw Exception('This should never happen.');
-          }
+          locks[_file.path] ??= Lock();
+          final result = await locks[_file.path]?.synchronized(() async {
+            final data = await compute(_read, _file.path);
+            if (data != null) {
+              return data;
+            } else {
+              print(
+                '[SafeLocalStorage]: Technically, this should never show up on the console.',
+              );
+              // Go to `catch` block if the [File] was missing after checking existence.
+              missing = true;
+              throw Exception('This should never happen.');
+            }
+          });
+          return result;
         } else {
           if (await temp.exists_()) {
             // Chances are [File] got deleted, then trying to retrieve from the older [write] operations.
             final contents = await temp.list_(
-              checker: (file) =>
+              predicate: (file) =>
                   basename(file.path).startsWith(basename(_file.path)) &&
                   !basename(file.path).endsWith('.src'),
             );
@@ -106,7 +78,8 @@ class SafeLocalStorage {
               return fallback;
             } else {
               print(
-                  '[SafeLocalStorage]: ${basename(_file.path)} found missing.');
+                '[SafeLocalStorage]: ${basename(_file.path)} found missing.',
+              );
               // Go to `catch` block since there is no entry of [File] in history either.
               missing = true;
               throw Exception('${_file.path} not found. Attempting roll-back.');
@@ -116,18 +89,17 @@ class SafeLocalStorage {
             return fallback;
           }
         }
-      } catch (exception /* , stacktrace */) {
-        // print(exception.toString());
-        // print(stacktrace.toString());
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
         if (!missing) {
           print('[SafeLocalStorage]: ${basename(_file.path)} found corrupt.');
         }
-        // [File] was corrupted or couldn't be read.
-        // Lookup in the older I/O transactions & rollback.
+        // [File] was corrupted or couldn't be read. Lookup in the older I/O transactions & rollback.
         if (await temp.exists_()) {
           if (contents.isEmpty) {
             contents = await temp.list_(
-              checker: (file) =>
+              predicate: (file) =>
                   basename(file.path).startsWith(basename(_file.path)) &&
                   !basename(file.path).endsWith('.src'),
             );
@@ -146,20 +118,21 @@ class SafeLocalStorage {
           }();
           for (final file in contents) {
             try {
-              if (fileMutexes[_file.path] != null) {
-                await fileMutexes[_file.path]!.future;
-              }
-              final data = await compute(
-                _readRollback,
-                [
-                  file.path,
-                  _file.path,
-                ],
-              );
-              return data;
-            } catch (exception /* , stacktrace */) {
-              // print(exception.toString());
-              // print(stacktrace.toString());
+              locks[_file.path] ??= Lock();
+              final result = await locks[_file.path]?.synchronized(() async {
+                final data = await compute(
+                  _readRollback,
+                  [
+                    file.path,
+                    _file.path,
+                  ],
+                );
+                return data;
+              });
+              return result;
+            } catch (exception, stacktrace) {
+              print(exception.toString());
+              print(stacktrace.toString());
               print(
                   '[SafeLocalStorage]: roll-back to ${basename(file.path)} failed.');
             }
@@ -175,9 +148,9 @@ class SafeLocalStorage {
     return lock.synchronized(() async {
       try {
         await _delete(_file.path);
-      } catch (exception /* , stacktrace */) {
-        // print(exception.toString());
-        // print(stacktrace.toString());
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
       }
     });
   }
@@ -189,15 +162,14 @@ class SafeLocalStorage {
   final lock = Lock();
 
   /// Initialized in the constructor.
-  late final File _file;
+  final File _file;
 
-  /// Following methods exist for `dart:isolate`.
-  /// For avoiding heavy JSON parsing on the main thread,
-  /// the [File] is read & deserialized in a separate [Isolate].
+  // Following methods exist for `dart:isolate` compatibility.
+
+  /// For avoiding heavy JSON parsing on the main thread, the [File] is read & deserialized in a separate [Isolate].
   ///
-  /// Since, [fileMutexes] is globally shared to ensure the isolation, but [Isolate]s
-  /// do not share global variables. So, explicitly the [Completer] is checked
-  /// before the [compute] call.
+  /// Since, [mutexes] is globally shared to ensure the isolation, but [Isolate]s do not share global variables.
+  /// So, explicitly the [Completer] is checked before the [compute] call.
 
   /// Reads the cache [File] given by [filePath] and returns the contents as `dynamic`.
   /// Returns `null` if the [File] is missing.
@@ -211,30 +183,29 @@ class SafeLocalStorage {
     return null;
   }
 
-  /// Attempts to read the history [File] at given by [filePaths]'s first element.
-  /// If the deserialization is successful, then the original [File] is also updated
-  /// to this rollback state (because it was corrupt).
-  /// Here, original [File]'s path is given by [filePaths]'s second element.
+  /// Attempts to read the history [File] at given by [paths]'s first element.
+  /// If the deserialization is successful, then the original [File] is also updated to this rollback state (because it was corrupt).
+  /// Here, original [File]'s path is given by [paths]'s second element.
   ///
-  static dynamic _readRollback(List<String> filePaths) async {
+  static dynamic _readRollback(List<String> paths) async {
     print(
-        '[SafeLocalStorage]: Attempting roll-back to ${basename(filePaths.first)}.');
-    final file = File(filePaths.first);
+        '[SafeLocalStorage]: Attempting roll-back to ${basename(paths.first)}.');
+    final file = File(paths.first);
     final content = await file.read_();
     final data = jsonDecode(content!);
     print(
         '[SafeLocalStorage]: roll-back to ${basename(file.path)} successful.');
     // Update the existing original [File].
-    await File(filePaths.last).write_(content);
+    await File(paths.last).write_(content);
     return data;
   }
 
   /// Limits the number of transaction-history files to [_kHistoryTransactionCount].
-  static void _removeRedundantFileTransactionHistory(String filePath) async {
-    final temp = Directory(join(File(filePath).parent.path, 'Temp'));
+  static void _removeRedundantFileTransactionHistory(String path) async {
+    final temp = Directory(join(File(path).parent.path, 'Temp'));
     if (await temp.exists_()) {
       final contents = await temp.list_(
-        checker: (file) => basename(file.path).startsWith(basename(filePath)),
+        predicate: (file) => basename(file.path).startsWith(basename(path)),
       );
       if (contents.length > _kHistoryTransactionCount) {
         // Sort by modification time in descending order.
@@ -263,13 +234,13 @@ class SafeLocalStorage {
   }
 
   /// Deletes the cache [File] as well as any transaction records.
-  static Future<void> _delete(String filePath) async {
-    final file = File(filePath);
+  static Future<void> _delete(String path) async {
+    final file = File(path);
     await file.delete_();
     final temp = Directory(join(file.parent.path, 'Temp'));
     if (await temp.exists_()) {
       final contents = await temp.list_(
-        checker: (file) => basename(file.path).startsWith(basename(filePath)),
+        predicate: (file) => basename(file.path).startsWith(basename(path)),
       );
       await Future.wait<void>(
         contents.map((file) => file.delete_()),

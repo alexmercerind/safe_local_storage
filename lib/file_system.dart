@@ -1,80 +1,75 @@
+/// This file is a part of safe_local_storage (https://github.com/alexmercerind/safe_local_storage).
+///
+/// Copyright (c) 2022, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
+/// All rights reserved.
+/// Use of this source code is governed by MIT license that can be found in the LICENSE file.
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:path/path.dart';
+import 'package:synchronized/synchronized.dart';
 
-/// Prefix needed on Windows for safely accessing local storage with long file path support.
-const String _kWindowsLongFileSystemPathPrefix = '\\\\?\\';
+// A general convention followed by the methods declared in this file is that a trailing underscore (_) is used.
+// It indicates that the method is a wrapper around the original method of the same name & fixes the issues that the original method has.
 
-/// Adds `\\?\` prefix to the path if it is not already added & ensures all separators are `\\` on Windows.
-String _clean(String path) {
-  // Network drives & NAS paths seem to start with `\\` & do not support `\\?\` prefix.
-  final prefix = Platform.isWindows &&
-          !path.startsWith('\\\\') &&
-          !path.startsWith(_kWindowsLongFileSystemPathPrefix)
-      ? _kWindowsLongFileSystemPathPrefix
-      : '';
+/// Local storage [File] or [Directory] path prefix required on Windows for long file path support.
+/// Default implementation in `dart:io` does not support long file paths on Windows.
+/// Reference: https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry
+const String kWin32LocalPathPrefix = '\\\\?\\';
+
+/// Network storage [File]s & [Directory]s path have a `\\` prefix on Windows.
+/// For these paths, `\\?\` prefix is not supported.
+const String kWin32NetworkPathPrefix = '\\\\';
+
+/// Returns updated [File] or [Directory] [path] with the necessary changes.
+String clean(String path) {
   if (Platform.isWindows) {
-    path = path.replaceAll('/', '\\');
+    final prefix = !path.startsWith(kWin32LocalPathPrefix) &&
+            !path.startsWith(kWin32NetworkPathPrefix)
+        ? kWin32LocalPathPrefix
+        : '';
+    return prefix + path.replaceAll('/', '\\');
   }
-  return prefix + path;
+  return path;
 }
 
+/// Wrapper around `dart:io`'s [FileSystemEntity] class.
 abstract class FS {
   static Future<FileSystemEntityType> type_(String path) {
-    return FileSystemEntity.type(_clean(path));
+    return FileSystemEntity.type(clean(path));
   }
 
   static FileSystemEntityType typeSync_(String path) {
-    return FileSystemEntity.typeSync(_clean(path));
+    return FileSystemEntity.typeSync(clean(path));
   }
 }
 
 extension DirectoryExtension on Directory {
-  /// Recursively lists all the present [File]s inside the [Directory].
+  /// Recursively lists all the [File]s present in the [Directory].
   ///
   /// * Safely handles long file-paths on Windows (https://github.com/dart-lang/sdk/issues/27825).
   /// * Does not terminate on errors e.g. an encounter of `Access Is Denied`.
   /// * Does not follow links.
   /// * Returns only [List] of [File]s.
   ///
-  /// The arguments [extensions], [checker] or [minimumFileSize] may be used to filter the resulting [File]s.
+  /// Optional argument [predicate] may be used to filter the [File]s.
   ///
   Future<List<File>> list_({
-    List<String>? extensions,
-    bool Function(File)? checker,
-    int minimumFileSize = 1024 * 1024,
+    bool Function(File)? predicate,
   }) async {
     final completer = Completer();
     final files = <File>[];
     try {
-      final directory = Directory(_clean(path));
-      directory
-          .list(
-        recursive: true,
-        followLinks: false,
-      )
-          .listen(
+      Directory(clean(path)).list(recursive: true, followLinks: false).listen(
         (event) {
           if (event is File) {
             final file = File(
               event.path.substring(
-                event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
-                    ? 4
-                    : 0,
+                event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
               ),
             );
-            if (checker != null) {
-              if (checker(file)) {
-                files.add(file);
-              }
-            } else if (extensions != null) {
-              if (extensions.contains(event.extension)) {
-                if (event.sizeSync_() >= minimumFileSize) {
-                  files.add(file);
-                }
-              }
-            } else {
+            if (predicate?.call(file) ?? true) {
               files.add(file);
             }
           }
@@ -94,33 +89,25 @@ extension DirectoryExtension on Directory {
     }
   }
 
-  /// Lists the current directory and returns a [List] of [FileSystemEntity]s.
+  /// Lists all the [FileSystemEntity]s present in the [Directory].
   ///
   /// * Safely handles long file-paths on Windows (https://github.com/dart-lang/sdk/issues/27825).
   /// * Does not terminate on errors e.g. an encounter of `Access Is Denied`.
   /// * Does not follow links.
   /// * Does not iterate recursively.
-  /// * Returns [List] of [FileSystemEntity]s present in current [Directory].
   ///
   Future<List<FileSystemEntity>> children_() async {
     final completer = Completer();
     final contents = <FileSystemEntity>[];
     try {
-      Directory(_clean(path))
-          .list(
-        recursive: false,
-        followLinks: false,
-      )
-          .listen(
+      Directory(clean(path)).list(recursive: false, followLinks: false).listen(
         (event) {
           switch (FS.typeSync_(event.path)) {
             case FileSystemEntityType.directory:
               contents.add(
                 Directory(
                   event.path.substring(
-                    event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
-                        ? 4
-                        : 0,
+                    event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
                   ),
                 ),
               );
@@ -129,9 +116,7 @@ extension DirectoryExtension on Directory {
               contents.add(
                 File(
                   event.path.substring(
-                    event.path.startsWith(_kWindowsLongFileSystemPathPrefix)
-                        ? 4
-                        : 0,
+                    event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
                   ),
                 ),
               );
@@ -155,10 +140,20 @@ extension DirectoryExtension on Directory {
     }
   }
 
-  /// Safely [create]s a [Directory] recursively.
+  /// Creates the [Directory] on file system.
   Future<void> create_() async {
     try {
-      await Directory(_clean(path)).create(recursive: true);
+      await Directory(clean(path)).create(recursive: true);
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+    }
+  }
+
+  /// Creates the [Directory] on file system.
+  void createSync() {
+    try {
+      Directory(clean(path)).createSync(recursive: true);
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
@@ -167,161 +162,172 @@ extension DirectoryExtension on Directory {
 }
 
 extension FileExtension on File {
-  /// Safely writes [String] [content] to a [File].
+  /// Safely writes [content] to the [File]. Passed [content] may be [String] or [Uint8List].
   ///
-  /// * Does not modify the contents of the original file, but
-  /// creates a new [File] & renames it to the original [File]'s
-  /// path for ensuring safety.
-  /// This helps in ensuring the atomicity of the transaction.
-  /// Thanks to @raitonoberu for the idea.
+  /// * Does not modify the contents of the original [File], but creates a new [File], writes the [content] to it & then renames it to the original [File]'s path if writing is successful.
+  ///   This ensures atomicity of the operation.
   ///
-  /// * Uses [Completer]s to ensure to concurrent transactions
-  /// to the same file path do not conflict. This ensures the
-  /// mutual exclusion.
+  /// * Uses [Completer]s to ensure to concurrent transactions to the same file path do not conflict.
+  ///   This ensures mutual exclusion of the operation.
   ///
-  /// * Two files are created, one for keeping the history of
-  /// the transaction & other is renamed to the original
-  /// cache [File]'s path.
+  /// Two [File]s are created, one for keeping history of the transaction & the other is renamed original [File]'s path.
+  /// The creation of transaction history [File] may be disabled by passing [history] as `false`.
   ///
   Future<void> write_(
     dynamic content, {
-    bool keepTransactionInHistory = false,
+    bool history = false,
   }) async {
-    if (fileMutexes[path] != null) {
-      await fileMutexes[path]!.future;
-    }
-    fileMutexes[path] = Completer();
-    try {
-      final id = DateTime.now().millisecondsSinceEpoch;
-      final files = [
-        // Transaction history file.
-        File(
-          join(
-            _clean(parent.path),
-            'Temp',
-            '${basename(path)}.$id',
+    locks[clean(path)] ??= Lock();
+    return locks[clean(path)]?.synchronized(() async {
+      try {
+        final id = DateTime.now().millisecondsSinceEpoch;
+        final files = [
+          // [File] used for keeping history of the transaction.
+          File(
+            join(
+              clean(parent.path),
+              'Temp',
+              '${basename(path)}.$id',
+            ),
           ),
-        ),
-        // Actual file that will be renamed to destination.
-        File(
-          join(
-            _clean(parent.path),
-            'Temp',
-            '${basename(path)}.$id.src',
-          ),
-        )
-      ];
-      await Future.wait(files.asMap().entries.map((e) async {
-        if (keepTransactionInHistory || e.key != 0) {
-          await e.value.create_();
-          if (content is String) {
-            await e.value.writeAsString(
-              content,
-              flush: true,
-            );
-          } else if (content is Uint8List) {
-            await e.value.writeAsBytes(
-              content,
-              flush: true,
-            );
-          }
-        }
-      }));
-      // To ensure atomicity of the transaction.
-      await files.last.rename_(_clean(path));
-    } catch (exception, stacktrace) {
-      print(exception.toString());
-      print(stacktrace.toString());
-    }
-    if (!fileMutexes[path]!.isCompleted) {
-      fileMutexes[path]!.complete();
-    }
+          // [File] used for renaming to the original [File]'s path after successful write.
+          File(
+            join(
+              clean(parent.path),
+              'Temp',
+              '${basename(path)}.$id.src',
+            ),
+          )
+        ];
+        await Future.wait(
+          files.asMap().entries.map((e) async {
+            if (history || e.key == 1) {
+              await e.value.create_();
+              if (content is String) {
+                await e.value.writeAsString(
+                  content,
+                  flush: true,
+                );
+              } else if (content is Uint8List) {
+                await e.value.writeAsBytes(
+                  content,
+                  flush: true,
+                );
+              } else {
+                throw FileSystemException(
+                  'Unsupported content type: ${content.runtimeType}',
+                  path,
+                );
+              }
+            }
+          }),
+        );
+        // To ensure atomicity of the transaction.
+        await files.last.rename_(clean(path));
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
+    });
   }
 
   /// Reads the contents of the [File] as [String].
-  /// Respects the mutual exclusion lock, but does not enforce one itself.
-  FutureOr<String?> read_() async {
-    if (fileMutexes[path] != null) {
-      await fileMutexes[path]!.future;
-    }
-    final file = File(_clean(path));
-    if (await file.exists_()) {
-      return file.readAsString();
-    }
-    return null;
+  /// Returns `null` if the [File] does not exist.
+  FutureOr<String?> read_() {
+    locks[clean(path)] ??= Lock();
+    return locks[clean(path)]?.synchronized(() async {
+      final file = File(clean(path));
+      if (await file.exists_()) {
+        return await file.readAsString();
+      }
+      return null;
+    });
   }
 
   /// Reads the contents of the [File] as [Uint8List].
-  /// Respects the mutual exclusion lock, but does not enforce one itself.
+  /// Returns `null` if the [File] does not exist.
   FutureOr<Uint8List?> readAsBytes_() async {
-    if (fileMutexes[path] != null) {
-      await fileMutexes[path]!.future;
-    }
-    final file = File(_clean(path));
-    if (await file.exists_()) {
-      return file.readAsBytes();
-    }
-    return null;
-  }
-
-  /// Safely [rename]s a [File].
-  Future<void> rename_(String newPath) async {
-    try {
-      await File(_clean(path)).rename(_clean(newPath));
-    } catch (exception, stacktrace) {
-      print(exception.toString());
-      print(stacktrace.toString());
-    }
-  }
-
-  /// Safely [copy] a [File].
-  Future<void> copy_(String newPath) async {
-    try {
-      // Delete if some [File] or [Directory] already exists at the newly specified path.
-      if (await File(_clean(newPath)).exists_()) {
-        await File(_clean(newPath)).delete_();
+    locks[clean(path)] ??= Lock();
+    return locks[clean(path)]?.synchronized(() async {
+      final file = File(clean(path));
+      if (await file.exists_()) {
+        return await file.readAsBytes();
       }
-      await File(_clean(path)).copy(_clean(newPath));
+      return null;
+    });
+  }
+
+  /// Renames the [File] to the specified [destination].
+  Future<void> rename_(String destination) async {
+    try {
+      await File(clean(path)).rename(clean(destination));
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
     }
   }
 
-  /// Safely [create]s a [File] recursively.
+  /// Copies the [File] to the specified [destination].
+  Future<void> copy_(String destination) async {
+    try {
+      // Delete if some [File] or [Directory] already exists at the [destination].
+      try {
+        if (await File(clean(destination)).exists_()) {
+          await File(clean(destination)).delete_();
+        }
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
+      try {
+        if (await Directory(clean(destination)).exists_()) {
+          await Directory(clean(destination)).delete_();
+        }
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
+      await File(clean(path)).copy(clean(destination));
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
+    }
+  }
+
+  /// Creates the [File].
   Future<void> create_() async {
     try {
-      await File(_clean(path)).create(recursive: true);
+      await File(clean(path)).create(recursive: true);
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
     }
   }
 
-  /// Returns the size in bytes of a [File] as `int`.
+  /// Returns size the [File] in bytes.
   /// Returns `0` if the [File] does not exist.
-  FutureOr<int> size_() async {
-    final file = File(_clean(path));
+  FutureOr<int> length_() async {
+    final file = File(clean(path));
     if (await file.exists_()) {
       return file.length();
     }
     return 0;
   }
 
-  /// Returns the size in bytes of a [File] as `int`.
+  /// Returns size the [File] in bytes.
   /// Returns `0` if the [File] does not exist.
-  int sizeSync_() {
-    final file = File(_clean(path));
+  int lengthSync_() {
+    final file = File(clean(path));
     if (file.existsSync_()) {
       return file.lengthSync();
     }
     return 0;
   }
 
-  /// Returns the last modified time of a [File] as [DateTime].
+  /// Returns last modified timestamp of the [File].
   /// Returns `null` if the [File] does not exist.
   FutureOr<DateTime?> lastModified_() async {
-    final file = File(_clean(path));
+    final file = File(clean(path));
     try {
       if (await file.exists_()) {
         return file.lastModified();
@@ -333,10 +339,10 @@ extension FileExtension on File {
     return null;
   }
 
-  /// Returns the last modified time of a [File] as [DateTime].
+  /// Returns last modified timestamp of the [File].
   /// Returns `null` if the [File] does not exist.
   DateTime? lastModifiedSync_() {
-    final file = File(_clean(path));
+    final file = File(clean(path));
     try {
       if (file.existsSync_()) {
         return file.lastModifiedSync();
@@ -350,16 +356,16 @@ extension FileExtension on File {
 }
 
 extension FileSystemEntityExtension on FileSystemEntity {
-  /// Safely deletes a [FileSystemEntity].
+  /// Deletes the [FileSystemEntity].
   Future<void> delete_() async {
     // Surround with try/catch instead of using [Directory.exists_],
     // because it confuses Windows into saying:
     // "The process cannot access the file because it is being used by another process."
     try {
       if (this is File) {
-        await File(_clean(path)).delete(recursive: true);
+        await File(clean(path)).delete(recursive: true);
       } else if (this is Directory) {
-        final directory = Directory(_clean(path));
+        final directory = Directory(clean(path));
         // TODO: [Directory.delete] is not working with `recursive` as `true`.
         // Bug in [dart-lang/sdk](https://github.com/dart-lang/sdk/issues/38148).
         // Adding a workaround for now.
@@ -369,24 +375,25 @@ extension FileSystemEntityExtension on FileSystemEntity {
             contents.map((file) => file.delete_()),
           );
         }
-        // This [Future.delayed] is needed for Windows.
+        // This voluntary delay is required for Windows.
         // Above [Directory.exists_] call confuses it and it returns error saying:
         // "The process cannot access the file because it is being used by another process."
         await Future.delayed(const Duration(milliseconds: 100));
         await directory.delete(recursive: true);
       }
-    } catch (exception) {
-      // NO;OP
+    } catch (exception, stacktrace) {
+      print(exception.toString());
+      print(stacktrace.toString());
     }
   }
 
-  /// Safely checks whether a [FileSystemEntity] exists or not.
+  /// Checks whether a [FileSystemEntity] exists or not.
   Future<bool> exists_() {
     try {
       if (this is File) {
-        return File(_clean(path)).exists();
+        return File(clean(path)).exists();
       } else if (this is Directory) {
-        return Directory(_clean(path)).exists();
+        return Directory(clean(path)).exists();
       } else {
         return Future.value(false);
       }
@@ -397,13 +404,13 @@ extension FileSystemEntityExtension on FileSystemEntity {
     }
   }
 
-  /// Safely checks whether a [FileSystemEntity] exists or not.
+  /// Checks whether a [FileSystemEntity] exists or not.
   bool existsSync_() {
     try {
       if (this is File) {
-        return File(_clean(path)).existsSync();
+        return File(clean(path)).existsSync();
       } else if (this is Directory) {
-        return Directory(_clean(path)).existsSync();
+        return Directory(clean(path)).existsSync();
       } else {
         return false;
       }
@@ -414,19 +421,14 @@ extension FileSystemEntityExtension on FileSystemEntity {
     }
   }
 
-  /// Shows a [FileSystemEntity] in the system's default file explorer.
-  ///
-  /// Opens a new external file explorer window with the [FileSystemEntity] selected.
-  ///
+  /// Displays a [File] or [Directory] in host operating system's default file explorer.
   void explore_() async {
     if (Platform.isWindows) {
       await Process.start(
         'explorer.exe',
         [
           '/select,',
-          path.startsWith(_kWindowsLongFileSystemPathPrefix)
-              ? path.substring(4)
-              : path,
+          path.startsWith(kWin32LocalPathPrefix) ? path.substring(4) : path,
         ],
         runInShell: true,
         includeParentEnvironment: true,
@@ -457,6 +459,5 @@ extension FileSystemEntityExtension on FileSystemEntity {
   String get extension => basename(path).split('.').last.toUpperCase();
 }
 
-/// [Map] storing various instances of [Completer] for
-/// mutual exclusion in [FileExtension.write_].
-final Map<String, Completer> fileMutexes = <String, Completer>{};
+/// [Map] for storing various instances of [Lock] to ensure mutual exclusion in [FileExtension.read_] & [FileExtension.write_].
+final Map<String, Lock> locks = <String, Lock>{};

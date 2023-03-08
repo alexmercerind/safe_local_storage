@@ -66,7 +66,9 @@ extension DirectoryExtension on Directory {
           if (event is File) {
             final file = File(
               event.path.substring(
-                event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
+                event.path.startsWith(kWin32LocalPathPrefix)
+                    ? kWin32LocalPathPrefix.length
+                    : 0,
               ),
             );
             if (predicate?.call(file) ?? true) {
@@ -107,7 +109,9 @@ extension DirectoryExtension on Directory {
               contents.add(
                 Directory(
                   event.path.substring(
-                    event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
+                    event.path.startsWith(kWin32LocalPathPrefix)
+                        ? kWin32LocalPathPrefix.length
+                        : 0,
                   ),
                 ),
               );
@@ -116,7 +120,9 @@ extension DirectoryExtension on Directory {
               contents.add(
                 File(
                   event.path.substring(
-                    event.path.startsWith(kWin32LocalPathPrefix) ? 4 : 0,
+                    event.path.startsWith(kWin32LocalPathPrefix)
+                        ? kWin32LocalPathPrefix.length
+                        : 0,
                   ),
                 ),
               );
@@ -142,21 +148,62 @@ extension DirectoryExtension on Directory {
 
   /// Creates the [Directory] on file system.
   Future<void> create_() async {
-    try {
-      await Directory(clean(path)).create(recursive: true);
-    } catch (exception, stacktrace) {
-      print(exception.toString());
-      print(stacktrace.toString());
-    }
-  }
-
-  /// Creates the [Directory] on file system.
-  void createSync() {
-    try {
-      Directory(clean(path)).createSync(recursive: true);
-    } catch (exception, stacktrace) {
-      print(exception.toString());
-      print(stacktrace.toString());
+    if (Platform.isWindows) {
+      // On Windows, \\?\ prefix causes issues if we use it to access a root volume without a trailing slash.
+      // In other words, \\?\C: is not valid, but \\?\C:\ is valid. If we try to access \\?\C: without a trailing slash, following error is thrown by Windows:
+      //
+      // "\\?\C:" is not a recognized device.
+      // The filename, directory name, or volume label syntax is incorrect.
+      //
+      // When recursively creating a [File] or [Directory] recursively using `dart:io`'s implementation, if the parent [Directory] does not exist, all the intermediate [Directory]s are created.
+      // However, internal implementation of `dart:io` does not handle the case of \\?\C: (without a trailing slash) & fails with the above error.
+      // To avoid this, we manually create the intermediate [Directory]s with the trailing slash.
+      final directory = Directory(clean(path));
+      Directory parent = directory.parent;
+      // Add trailing slash if not present.
+      if (!parent.path.endsWith('\\')) {
+        parent = Directory('${parent.path}\\');
+      }
+      // [File] already exists.
+      if (await directory.exists_()) {
+        return;
+      }
+      // Parent [Directory] exists, no need to create intermediate [Directory]s. Just create the [File].
+      else if (await parent.exists_()) {
+        await directory.create();
+      }
+      // Parent [Directory] does not exist, create intermediate [Directory]s & then create the [File].
+      else {
+        String path = directory.path.startsWith(kWin32LocalPathPrefix)
+            ? directory.path.substring(kWin32LocalPathPrefix.length)
+            : directory.path;
+        if (path.endsWith('\\')) {
+          path = path.substring(0, path.length - 1);
+        }
+        final parts = path.split('\\');
+        parts.removeLast();
+        for (int i = 0; i < parts.length; i++) {
+          final intermediate =
+              '$kWin32LocalPathPrefix${parts.sublist(0, i + 1).join('\\')}\\';
+          try {
+            if (!await Directory(intermediate).exists_()) {
+              await Directory(intermediate).create();
+            }
+          } catch (exception, stacktrace) {
+            print(exception.toString());
+            print(stacktrace.toString());
+          }
+        }
+        // Finally create the [File].
+        await directory.create();
+      }
+    } else {
+      try {
+        await Directory(clean(path)).create(recursive: true);
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
     }
   }
 }
@@ -179,6 +226,10 @@ extension FileExtension on File {
   }) async {
     locks[clean(path)] ??= Lock();
     return locks[clean(path)]?.synchronized(() async {
+      // Create the [File] if it does not exist.
+      if (!await File(clean(path)).exists_()) {
+        await File(clean(path)).create();
+      }
       try {
         final id = DateTime.now().millisecondsSinceEpoch;
         final files = [
@@ -260,6 +311,23 @@ extension FileExtension on File {
   /// Renames the [File] to the specified [destination].
   Future<void> rename_(String destination) async {
     try {
+      // Delete if some [File] or [Directory] already exists at the [destination].
+      try {
+        if (await File(clean(destination)).exists_()) {
+          await File(clean(destination)).delete_();
+        }
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
+      try {
+        if (await Directory(clean(destination)).exists_()) {
+          await Directory(clean(destination)).delete_();
+        }
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
       await File(clean(path)).rename(clean(destination));
     } catch (exception, stacktrace) {
       print(exception.toString());
@@ -296,11 +364,62 @@ extension FileExtension on File {
 
   /// Creates the [File].
   Future<void> create_() async {
-    try {
-      await File(clean(path)).create(recursive: true);
-    } catch (exception, stacktrace) {
-      print(exception.toString());
-      print(stacktrace.toString());
+    if (Platform.isWindows) {
+      // On Windows, \\?\ prefix causes issues if we use it to access a root volume without a trailing slash.
+      // In other words, \\?\C: is not valid, but \\?\C:\ is valid. If we try to access \\?\C: without a trailing slash, following error is thrown by Windows:
+      //
+      // "\\?\C:" is not a recognized device.
+      // The filename, directory name, or volume label syntax is incorrect.
+      //
+      // When recursively creating a [File] or [Directory] recursively using `dart:io`'s implementation, if the parent [Directory] does not exist, all the intermediate [Directory]s are created.
+      // However, internal implementation of `dart:io` does not handle the case of \\?\C: (without a trailing slash) & fails with the above error.
+      // To avoid this, we manually create the intermediate [Directory]s with the trailing slash.
+      final file = File(clean(path));
+      Directory parent = file.parent;
+      // Add trailing slash if not present.
+      if (!parent.path.endsWith('\\')) {
+        parent = Directory('${parent.path}\\');
+      }
+      // [File] already exists.
+      if (await file.exists_()) {
+        return;
+      }
+      // Parent [Directory] exists, no need to create intermediate [Directory]s. Just create the [File].
+      else if (await parent.exists_()) {
+        await file.create();
+      }
+      // Parent [Directory] does not exist, create intermediate [Directory]s & then create the [File].
+      else {
+        String path = file.path.startsWith(kWin32LocalPathPrefix)
+            ? file.path.substring(kWin32LocalPathPrefix.length)
+            : file.path;
+        if (path.endsWith('\\')) {
+          path = path.substring(0, path.length - 1);
+        }
+        final parts = path.split('\\');
+        parts.removeLast();
+        for (int i = 0; i < parts.length; i++) {
+          final intermediate =
+              '$kWin32LocalPathPrefix${parts.sublist(0, i + 1).join('\\')}\\';
+          try {
+            if (!await Directory(intermediate).exists_()) {
+              await Directory(intermediate).create();
+            }
+          } catch (exception, stacktrace) {
+            print(exception.toString());
+            print(stacktrace.toString());
+          }
+        }
+        // Finally create the [File].
+        await file.create();
+      }
+    } else {
+      try {
+        await File(clean(path)).create(recursive: true);
+      } catch (exception, stacktrace) {
+        print(exception.toString());
+        print(stacktrace.toString());
+      }
     }
   }
 
@@ -370,15 +489,11 @@ extension FileSystemEntityExtension on FileSystemEntity {
         // Bug in [dart-lang/sdk](https://github.com/dart-lang/sdk/issues/38148).
         // Adding a workaround for now.
         if (await directory.exists_()) {
-          final contents = directory.listSync(recursive: true).cast<File>();
+          final contents = await directory.list_();
           await Future.wait(
             contents.map((file) => file.delete_()),
           );
         }
-        // This voluntary delay is required for Windows.
-        // Above [Directory.exists_] call confuses it and it returns error saying:
-        // "The process cannot access the file because it is being used by another process."
-        await Future.delayed(const Duration(milliseconds: 100));
         await directory.delete(recursive: true);
       }
     } catch (exception, stacktrace) {
@@ -428,7 +543,9 @@ extension FileSystemEntityExtension on FileSystemEntity {
         'explorer.exe',
         [
           '/select,',
-          path.startsWith(kWin32LocalPathPrefix) ? path.substring(4) : path,
+          path.startsWith(kWin32LocalPathPrefix)
+              ? path.substring(kWin32LocalPathPrefix.length)
+              : path,
         ],
         runInShell: true,
         includeParentEnvironment: true,

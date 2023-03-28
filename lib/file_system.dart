@@ -472,6 +472,16 @@ extension FileExtension on File {
     }
     return null;
   }
+
+  /// Returns size the [File] in bytes.
+  /// Returns `0` if the [File] does not exist.
+  @Deprecated('Use [length_] instead.')
+  FutureOr<int> size_() => length_();
+
+  /// Returns size the [File] in bytes.
+  /// Returns `0` if the [File] does not exist.
+  @Deprecated('Use [lengthSync_] instead.')
+  int sizeSync_() => lengthSync_();
 }
 
 extension FileSystemEntityExtension on FileSystemEntity {

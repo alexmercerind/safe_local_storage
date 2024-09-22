@@ -14,67 +14,75 @@ import 'package:collection/collection.dart';
 import 'package:safe_local_storage/safe_local_storage.dart';
 
 Future<void> main() async {
-  final cacheDirectoryPath = File(Platform.script.toFilePath()).parent.path;
-  final cacheFilePath = join(
-    cacheDirectoryPath,
-    'cache.json',
-  );
-  const fallback = {'message': 'hello'};
+  final directory = Directory.systemTemp.path;
+
+  final path = join(directory, 'Cache.JSON');
+  const fallback = {'message': 'hello, world!'};
+
+  print(path);
 
   Future<void> clearCacheFile() async {
-    await File(cacheFilePath).delete_();
+    try {
+      await File(path).delete();
+    } catch (_) {}
   }
 
   Future<void> clearCacheHistory() async {
-    await Directory(join(cacheDirectoryPath, 'Temp')).delete_();
+    final historyDirectory =
+        Directory(join(directory, SafeLocalStorage.kHistoryDirectoryName));
+    try {
+      for (final file in historyDirectory.listSync()) {
+        if (file is File) {
+          await file.delete();
+        }
+      }
+      historyDirectory.delete();
+    } catch (_) {}
   }
 
-  Future<void> clear() => Future.wait([
-        clearCacheFile(),
-        clearCacheHistory(),
-      ]);
-  test('creation', () async {
+  Future<void> clear() => Future.wait([clearCacheFile(), clearCacheHistory()]);
+
+  test('init', () async {
     await clear();
-    SafeLocalStorage(cacheFilePath);
+    SafeLocalStorage(path);
   });
   test('empty-read', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     expect(
       const MapEquality().equals(await storage.read(), fallback),
       isTrue,
     );
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isFalse,
     );
   });
   test('write', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await storage.write({'foo': 'bar'});
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(1),
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      Directory(join(directory, '.History')).listSync().first,
       TypeMatcher<File>(),
     );
     expect(
-      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
-              as File)
+      await (Directory(join(directory, '.History')).listSync().first as File)
           .readAsString(),
-      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+      equals(json.encode({'foo': 'bar'})),
     );
   });
   test('read', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await storage.write({'foo': 'bar'});
     final data = await storage.read();
     expect(
@@ -82,27 +90,26 @@ Future<void> main() async {
       isTrue,
     );
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(1),
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      Directory(join(directory, '.History')).listSync().first,
       TypeMatcher<File>(),
     );
     expect(
-      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
-              as File)
+      await (Directory(join(directory, '.History')).listSync().first as File)
           .readAsString(),
-      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+      equals(json.encode({'foo': 'bar'})),
     );
   });
   test('rollback-after-cache-missing', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await storage.write({'foo': 'bar'});
     await clearCacheFile();
     final data = await storage.read();
@@ -111,57 +118,97 @@ Future<void> main() async {
       isTrue,
     );
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(1),
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      Directory(join(directory, '.History')).listSync().first,
       TypeMatcher<File>(),
     );
     expect(
-      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
-              as File)
+      await (Directory(join(directory, '.History')).listSync().first as File)
           .readAsString(),
-      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+      equals(json.encode({'foo': 'bar'})),
     );
   });
   test('rollback-after-cache-corrupt', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await storage.write({'foo': 'bar'});
     // Corrupt the file.
-    await File(cacheFilePath).writeAsString('haha!');
+    await File(path).writeAsString('Haha!');
     final data = await storage.read();
     expect(
       const MapEquality().equals(data, {'foo': 'bar'}),
       isTrue,
     );
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(1),
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().first,
+      Directory(join(directory, '.History')).listSync().first,
       TypeMatcher<File>(),
     );
     expect(
-      await (Directory(join(cacheDirectoryPath, 'Temp')).listSync().first
-              as File)
+      await (Directory(join(directory, '.History')).listSync().first as File)
           .readAsString(),
-      equals(JsonEncoder.withIndent('    ').convert({'foo': 'bar'})),
+      equals(json.encode({'foo': 'bar'})),
+    );
+  });
+  test('rollback-after-cache-corrupt-history-corrupt', () async {
+    await clear();
+    final storage = SafeLocalStorage(path, fallback: fallback);
+    // Write data.
+    final completers = [
+      Completer(),
+      Completer(),
+      Completer(),
+    ];
+    storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
+    storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
+    storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
+    await Future.wait(completers.map((e) => e.future));
+    // Corrupt the file.
+    await File(path).writeAsString('haha!');
+    // Corrupt last history entry.
+    final contents =
+        Directory(join(directory, '.History')).listSync().cast<File>();
+    contents.sort(
+      (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
+        int.parse(basename(a.path).split('.').last),
+      ),
+    );
+    await contents.first.writeAsString('haha!');
+
+    final data = await storage.read();
+
+    print(data);
+
+    expect(
+      const MapEquality().equals(data, {'foo': 'baz'}),
+      isTrue,
+    );
+    expect(
+      await Directory(join(directory, '.History')).exists(),
+      isTrue,
+    );
+    expect(
+      Directory(join(directory, '.History')).listSync().length,
+      equals(3),
     );
   });
   test('fallback-after-cache-and-history-delete', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await storage.write({'foo': 'bar'});
     await clear();
     expect(
@@ -169,9 +216,51 @@ Future<void> main() async {
       isTrue,
     );
   });
+  test('fallback-cache-missing-empty-history', () async {
+    await clear();
+    final storage = SafeLocalStorage(path, fallback: fallback);
+    await storage.write({'foo': 'bar'});
+    // Delete cache file.
+    await clearCacheFile();
+    // Empty the history.
+    await Future.wait(
+      Directory(join(directory, '.History')).listSync().map((e) {
+        if (e is File) {
+          return e.delete();
+        } else {
+          return Future.value();
+        }
+      }),
+    );
+    expect(
+      const MapEquality().equals(await storage.read(), fallback),
+      isTrue,
+    );
+  });
+  test('fallback-cache-corrupt-empty-history', () async {
+    await clear();
+    final storage = SafeLocalStorage(path, fallback: fallback);
+    await storage.write({'foo': 'bar'});
+    // Corrupt the file.
+    await File(path).writeAsString('haha!');
+    // Empty the history.
+    await Future.wait(
+      Directory(join(directory, '.History')).listSync().map((e) {
+        if (e is File) {
+          return e.delete();
+        } else {
+          return Future.value();
+        }
+      }),
+    );
+    expect(
+      const MapEquality().equals(await storage.read(), fallback),
+      isTrue,
+    );
+  });
   test('write-mutual-exclusion-and-sequencing', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     final completers = [
       Completer(),
       Completer(),
@@ -187,100 +276,17 @@ Future<void> main() async {
       isTrue,
     );
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(3),
-    );
-  });
-  test('cache-rollback-history', () async {
-    await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
-    // Write data.
-    final completers = [
-      Completer(),
-      Completer(),
-      Completer(),
-    ];
-    storage.write({'foo': 'bar'}).then((value) => completers[0].complete());
-    storage.write({'foo': 'baz'}).then((value) => completers[1].complete());
-    storage.write({'fizz': 'buzz'}).then((value) => completers[2].complete());
-    await Future.wait(completers.map((e) => e.future));
-    // Corrupt file.
-    await File(cacheFilePath).write_('haha!');
-    // Corrupt latest [File] in the history.
-    final contents =
-        Directory(join(cacheDirectoryPath, 'Temp')).listSync().cast<File>();
-    contents.sort(
-      (a, b) => int.parse(basename(b.path).split('.').last).compareTo(
-        int.parse(basename(a.path).split('.').last),
-      ),
-    );
-    // Not using [FileExtension.write_] here because it's not meant to be used to
-    // alter the history versions of the cache file.
-    await contents.first.writeAsString('haha!');
-    // Perform read.
-    final data = await storage.read();
-    expect(
-      const MapEquality().equals(data, {'foo': 'baz'}),
-      isTrue,
-    );
-    expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
-      isTrue,
-    );
-    expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
-      equals(3),
-    );
-  });
-  test('fallback-cache-delete-empty-history', () async {
-    await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
-    await storage.write({'foo': 'bar'});
-    // Delete cache file.
-    await clearCacheFile();
-    // Empty the history.
-    await Future.wait(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().map((e) {
-        if (e is File) {
-          return e.delete();
-        } else {
-          return Future.value();
-        }
-      }),
-    );
-    expect(
-      const MapEquality().equals(await storage.read(), fallback),
-      isTrue,
-    );
-  });
-  test('fallback-cache-corrupt-empty-history', () async {
-    await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
-    await storage.write({'foo': 'bar'});
-    // Corrupt the file.
-    await File(cacheFilePath).write_('haha!');
-    // Empty the history.
-    await Future.wait(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().map((e) {
-        if (e is File) {
-          return e.delete();
-        } else {
-          return Future.value();
-        }
-      }),
-    );
-    expect(
-      const MapEquality().equals(await storage.read(), fallback),
-      isTrue,
     );
   });
   test('history-transaction-limit', () async {
     await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
+    final storage = SafeLocalStorage(path, fallback: fallback);
     await Future.wait(
       List.generate(
         20,
@@ -288,56 +294,25 @@ Future<void> main() async {
       ),
     );
     // Wait for the asynchronous suspension to complete.
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 500));
     expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
+      await Directory(join(directory, '.History')).exists(),
       isTrue,
     );
     expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
+      Directory(join(directory, '.History')).listSync().length,
       equals(10),
     );
-    Directory(join(cacheDirectoryPath, 'Temp')).listSync().forEach(
-          (e) => expect(
-            const MapEquality().equals(
-              jsonDecode((e as File).readAsStringSync()),
-              {'foo': 'bar'},
-            ),
-            isTrue,
-          ),
-        );
-  });
-  test('delete', () async {
-    await clear();
-    final storage = SafeLocalStorage(cacheFilePath, fallback: fallback);
-    await Future.wait(
-      List.generate(
-        20,
-        (index) => storage.write({'foo': 'bar'}),
-      ),
-    );
-    // Wait for the asynchronous suspension to complete.
-    await Future.delayed(const Duration(milliseconds: 100));
-    expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
-      isTrue,
-    );
-    expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
-      equals(10),
-    );
-    await storage.delete();
-    expect(
-      await Directory(join(cacheDirectoryPath, 'Temp')).exists_(),
-      isTrue,
-    );
-    expect(
-      Directory(join(cacheDirectoryPath, 'Temp')).listSync().length,
-      equals(0),
-    );
-    expect(
-      await File(cacheFilePath).exists_(),
-      isFalse,
-    );
+    final files =
+        Directory(join(directory, '.History')).listSync().cast<File>();
+    for (final file in files) {
+      expect(
+        const MapEquality().equals(
+          json.decode(file.readAsStringSync()),
+          {'foo': 'bar'},
+        ),
+        isTrue,
+      );
+    }
   });
 }

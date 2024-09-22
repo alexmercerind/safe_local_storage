@@ -7,6 +7,12 @@ import 'package:synchronized/extension.dart';
 
 import 'package:safe_local_storage/isolates.dart';
 
+// --------------------------------------------------
+
+export 'package:safe_local_storage/file_system.dart';
+
+// --------------------------------------------------
+
 /// {@template safe_local_storage}
 ///
 /// SafeLocalStorage

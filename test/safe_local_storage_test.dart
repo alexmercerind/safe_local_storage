@@ -1,9 +1,3 @@
-/// This file is a part of safe_local_storage (https://github.com/alexmercerind/safe_local_storage).
-///
-/// Copyright (c) 2022, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
-/// All rights reserved.
-/// Use of this source code is governed by MIT license that can be found in the LICENSE file.
-
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';

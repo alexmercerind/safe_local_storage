@@ -8,8 +8,7 @@ const data = {'foo': 'bar'};
 Future<void> main() async {
   final storage = SafeLocalStorage(location);
   await storage.write(data);
-  final result = await storage.read();
-  print(result);
+  print(await storage.read());
 }
 
 String get location {

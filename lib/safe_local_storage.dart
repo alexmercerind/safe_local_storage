@@ -48,22 +48,18 @@ class SafeLocalStorage {
     final historyPath = join(dirname(cachePath), kHistoryDirectoryName);
     final historyDirectory = Directory(historyPath);
 
-    try {
-      await cacheFile.write_(json.encode(data.data));
-    } catch (_) {}
+    await cacheFile.write_(json.encode(data.data));
 
-    try {
-      if (!await historyDirectory.exists_()) {
-        await historyDirectory.create_();
-      }
-    } catch (_) {}
+    if (!await historyDirectory.exists_()) {
+      await historyDirectory.create_();
+    }
 
     final historyId = DateTime.now().millisecondsSinceEpoch;
     final historyEntryPath = join(historyPath, '$cacheFileName.$historyId');
     final historyEntryFile = File(historyEntryPath);
     await historyEntryFile.write_(json.encode(data.data));
 
-    await _clearHistoryEntryFiles(_ClearHistoryEntryFiles(cachePath));
+    await _clearHistoryEntryFiles(cachePath);
   }
 
   static Future<dynamic> _read(_ReadData data) async {
@@ -71,21 +67,19 @@ class SafeLocalStorage {
     final cacheFile = File(cachePath);
 
     try {
-      final cacheFileContent = await cacheFile.readAsString_();
-      return json.decode(cacheFileContent!);
+      final cacheContent = await cacheFile.readAsString_();
+      return json.decode(cacheContent!);
     } catch (_) {}
 
     try {
-      final historyEntryFiles =
-          await _getHistoryEntryFiles(_GetHistoryEntryFiles(cachePath));
+      final historyEntryFiles = await _getHistoryEntryFiles(cachePath);
 
       for (final historyEntryFile in historyEntryFiles) {
         try {
-          final historyEntryFileContent =
-              await historyEntryFile.readAsString_();
-          final historyEntryData = json.decode(historyEntryFileContent!);
+          final historyEntryContent = await historyEntryFile.readAsString_();
+          final historyEntryData = json.decode(historyEntryContent!);
 
-          await cacheFile.write_(historyEntryFileContent);
+          await cacheFile.write_(historyEntryContent);
 
           return historyEntryData;
         } catch (_) {}
@@ -95,9 +89,8 @@ class SafeLocalStorage {
     return data.fallback;
   }
 
-  static Future<List<File>> _getHistoryEntryFiles(
-      _GetHistoryEntryFiles data) async {
-    final cachePath = data.path;
+  static Future<List<File>> _getHistoryEntryFiles(String path) async {
+    final cachePath = path;
     final cacheFileName = basename(cachePath);
 
     final historyPath = join(dirname(cachePath), kHistoryDirectoryName);
@@ -135,25 +128,13 @@ class SafeLocalStorage {
     return historyEntryFiles;
   }
 
-  static Future<void> _clearHistoryEntryFiles(
-      _ClearHistoryEntryFiles data) async {
-    final cachePath = data.path;
+  static Future<void> _clearHistoryEntryFiles(String path) async {
+    final cachePath = path;
 
-    final historyPath = join(dirname(cachePath), kHistoryDirectoryName);
-    final historyDirectory = Directory(historyPath);
-
-    try {
-      if (!await historyDirectory.exists_()) {
-        return;
-      }
-    } catch (_) {}
-
-    try {
-      final historyEntryFiles = await historyDirectory.list_();
-      for (final historyEntryFile in historyEntryFiles.skip(kHistoryCount)) {
-        await historyEntryFile.delete_();
-      }
-    } catch (_) {}
+    final historyEntryFiles = await _getHistoryEntryFiles(cachePath);
+    for (final historyEntryFile in historyEntryFiles.skip(kHistoryCount)) {
+      await historyEntryFile.delete_();
+    }
   }
 
   static const int kHistoryCount = 10;
@@ -173,16 +154,4 @@ class _ReadData {
   final dynamic fallback;
 
   _ReadData(this.path, this.fallback);
-}
-
-class _GetHistoryEntryFiles {
-  final String path;
-
-  _GetHistoryEntryFiles(this.path);
-}
-
-class _ClearHistoryEntryFiles {
-  final String path;
-
-  _ClearHistoryEntryFiles(this.path);
 }

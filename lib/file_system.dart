@@ -13,7 +13,7 @@ const String kWindowsStoragePathPrefix = '\\\\?\\';
 
 /// Network storage path have a \ prefix on Windows.
 /// For these paths, \\?\ prefix does not work correctly.
-const String kWindowsNetworkPathPrefix = '\\';
+const List<String> kWindowsNetworkPathPrefixes = ['\\', '/'];
 
 String kPathSeparator = Platform.isWindows ? '\\' : '/';
 
@@ -22,7 +22,8 @@ String addPrefix(String path) {
   String result;
   if (Platform.isWindows) {
     final hasStoragePrefix = path.startsWith(kWindowsStoragePathPrefix);
-    final hasNetworkPrefix = path.startsWith(kWindowsNetworkPathPrefix);
+    final hasNetworkPrefix =
+        kWindowsNetworkPathPrefixes.any((e) => path.startsWith(e));
     final hasPrefix = hasStoragePrefix || hasNetworkPrefix;
     final prefix = !hasPrefix ? kWindowsStoragePathPrefix : '';
     result = '$prefix${normalize(path.replaceAll('/', '\\'))}';
@@ -89,7 +90,11 @@ extension DirectoryExtension on Directory {
         (event) {
           if (event is File) {
             final file = File(removePrefix(event.path));
-            if (predicate?.call(file) ?? true) {
+
+            final isPredicateSuccess = predicate?.call(file) ?? true;
+            final isParentIosTrash =
+                Platform.isIOS && basename(event.parent.path) == '.Trash';
+            if (isPredicateSuccess && !isParentIosTrash) {
               files.add(file);
             }
           }

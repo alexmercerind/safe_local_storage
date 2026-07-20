@@ -93,7 +93,7 @@ extension DirectoryExtension on Directory {
 
             final isPredicateSuccess = predicate?.call(file) ?? true;
             final isParentIosTrash =
-                Platform.isIOS && basename(event.parent.path) == '.Trash';
+                Platform.isIOS && basename(file.parent.path).contains('.Trash');
             if (isPredicateSuccess && !isParentIosTrash) {
               files.add(file);
             }

@@ -1,3 +1,7 @@
+## 2.0.6
+
+- Updated release.
+
 ## 2.0.5
 
 - Updated release.

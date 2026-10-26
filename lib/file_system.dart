@@ -17,6 +17,25 @@ const List<String> kWindowsNetworkPathPrefixes = ['\\', '/'];
 
 String kPathSeparator = Platform.isWindows ? '\\' : '/';
 
+bool _isWindowsDriveRoot(String path) {
+  var p = path;
+  if (p.startsWith(kWindowsStoragePathPrefix)) {
+    p = p.substring(kWindowsStoragePathPrefix.length);
+  }
+  if (p.isEmpty) return false;
+  final first = p.codeUnitAt(0);
+  final isLetter =
+      (first >= 65 && first <= 90) || (first >= 97 && first <= 122);
+  if (!isLetter) return false;
+
+  if (p.length == 2) {
+    return p[1] == ':';
+  } else if (p.length == 3) {
+    return p[1] == ':' && (p[2] == '\\' || p[2] == '/');
+  }
+  return false;
+}
+
 /// Returns the file system path with the prefix added.
 String addPrefix(String path) {
   String result;
@@ -27,6 +46,9 @@ String addPrefix(String path) {
     final hasPrefix = hasStoragePrefix || hasNetworkPrefix;
     final prefix = !hasPrefix ? kWindowsStoragePathPrefix : '';
     result = '$prefix${normalize(path.replaceAll('/', '\\'))}';
+    if (_isWindowsDriveRoot(result)) {
+      return addTrailingSlash(result);
+    }
   } else {
     result = normalize(path);
   }
@@ -39,6 +61,9 @@ String removePrefix(String path) {
   String result;
   if (Platform.isWindows && path.startsWith(kWindowsStoragePathPrefix)) {
     result = normalize(path.substring(kWindowsStoragePathPrefix.length));
+    if (_isWindowsDriveRoot(result)) {
+      return addTrailingSlash(result);
+    }
   } else {
     result = normalize(path);
   }
@@ -56,6 +81,13 @@ String addTrailingSlash(String path) {
 
 /// Removes a trailing slash from the path if it has one.
 String removeTrailingSlash(String path) {
+  if (Platform.isWindows) {
+    if (_isWindowsDriveRoot(path)) {
+      return path;
+    }
+  } else if (path == '/') {
+    return path;
+  }
   if (path.endsWith(kPathSeparator)) {
     return path.substring(0, path.length - 1);
   }
@@ -371,7 +403,7 @@ extension FileExtension on File {
     final file = File(addPrefix(path));
     try {
       if (await file.exists_()) {
-        return file.length();
+        return await file.length();
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
@@ -401,7 +433,7 @@ extension FileExtension on File {
     final file = File(addPrefix(path));
     try {
       if (await file.exists_()) {
-        return file.lastModified();
+        return await file.lastModified();
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
@@ -451,19 +483,19 @@ extension FileSystemEntityExtension on FileSystemEntity {
   }
 
   /// Checks whether the [FileSystemEntity] exists or not.
-  Future<bool> exists_() {
+  Future<bool> exists_() async {
     try {
       if (this is File) {
-        return File(addPrefix(path)).exists();
+        return await File(addPrefix(path)).exists();
       } else if (this is Directory) {
-        return Directory(addPrefix(path)).exists();
+        return await Directory(addPrefix(path)).exists();
       } else {
-        return Future.value(false);
+        return false;
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
-      return Future.value(false);
+      return false;
     }
   }
 

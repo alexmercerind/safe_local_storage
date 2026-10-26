@@ -17,21 +17,14 @@ const List<String> kWindowsNetworkPathPrefixes = ['\\', '/'];
 
 String kPathSeparator = Platform.isWindows ? '\\' : '/';
 
-bool _isWindowsDriveRoot(String path) {
-  var p = path;
-  if (p.startsWith(kWindowsStoragePathPrefix)) {
-    p = p.substring(kWindowsStoragePathPrefix.length);
-  }
-  if (p.isEmpty) return false;
-  final first = p.codeUnitAt(0);
-  final isLetter =
-      (first >= 65 && first <= 90) || (first >= 97 && first <= 122);
-  if (!isLetter) return false;
-
-  if (p.length == 2) {
-    return p[1] == ':';
-  } else if (p.length == 3) {
-    return p[1] == ':' && (p[2] == '\\' || p[2] == '/');
+/// Checks whether the [path] represents a Windows drive root.
+bool isDriveRoot(String path) {
+  if (Platform.isWindows) {
+    var p = path;
+    if (p.startsWith(kWindowsStoragePathPrefix)) {
+      p = p.substring(kWindowsStoragePathPrefix.length);
+    }
+    return RegExp(r'^[a-zA-Z]:[/\\]?$').hasMatch(p);
   }
   return false;
 }
@@ -46,9 +39,6 @@ String addPrefix(String path) {
     final hasPrefix = hasStoragePrefix || hasNetworkPrefix;
     final prefix = !hasPrefix ? kWindowsStoragePathPrefix : '';
     result = '$prefix${normalize(path.replaceAll('/', '\\'))}';
-    if (_isWindowsDriveRoot(result)) {
-      return addTrailingSlash(result);
-    }
   } else {
     result = normalize(path);
   }
@@ -61,9 +51,6 @@ String removePrefix(String path) {
   String result;
   if (Platform.isWindows && path.startsWith(kWindowsStoragePathPrefix)) {
     result = normalize(path.substring(kWindowsStoragePathPrefix.length));
-    if (_isWindowsDriveRoot(result)) {
-      return addTrailingSlash(result);
-    }
   } else {
     result = normalize(path);
   }
@@ -82,13 +69,11 @@ String addTrailingSlash(String path) {
 /// Removes a trailing slash from the path if it has one.
 String removeTrailingSlash(String path) {
   if (Platform.isWindows) {
-    if (_isWindowsDriveRoot(path)) {
-      return path;
+    if (isDriveRoot(path)) {
+      return addTrailingSlash(path);
     }
-  } else if (path == '/') {
-    return path;
   }
-  if (path.endsWith(kPathSeparator)) {
+  if (path != '/' && path.endsWith(kPathSeparator)) {
     return path.substring(0, path.length - 1);
   }
   return path;

@@ -17,6 +17,18 @@ const List<String> kWindowsNetworkPathPrefixes = ['\\', '/'];
 
 String kPathSeparator = Platform.isWindows ? '\\' : '/';
 
+/// Checks whether the [path] represents a Windows drive root.
+bool isDriveRoot(String path) {
+  if (Platform.isWindows) {
+    String p = path;
+    if (p.startsWith(kWindowsStoragePathPrefix)) {
+      p = p.substring(kWindowsStoragePathPrefix.length);
+    }
+    return RegExp(r'^[a-zA-Z]:[/\\]?$').hasMatch(p);
+  }
+  return false;
+}
+
 /// Returns the file system path with the prefix added.
 String addPrefix(String path) {
   String result;
@@ -56,7 +68,12 @@ String addTrailingSlash(String path) {
 
 /// Removes a trailing slash from the path if it has one.
 String removeTrailingSlash(String path) {
-  if (path.endsWith(kPathSeparator)) {
+  if (Platform.isWindows) {
+    if (isDriveRoot(path)) {
+      return addTrailingSlash(path);
+    }
+  }
+  if (path != '/' && path.endsWith(kPathSeparator)) {
     return path.substring(0, path.length - 1);
   }
   return path;
@@ -451,19 +468,19 @@ extension FileSystemEntityExtension on FileSystemEntity {
   }
 
   /// Checks whether the [FileSystemEntity] exists or not.
-  Future<bool> exists_() {
+  Future<bool> exists_() async {
     try {
       if (this is File) {
-        return File(addPrefix(path)).exists();
+        return await File(addPrefix(path)).exists();
       } else if (this is Directory) {
-        return Directory(addPrefix(path)).exists();
+        return await Directory(addPrefix(path)).exists();
       } else {
-        return Future.value(false);
+        return false;
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
       print(stacktrace.toString());
-      return Future.value(false);
+      return false;
     }
   }
 

@@ -20,7 +20,7 @@ String kPathSeparator = Platform.isWindows ? '\\' : '/';
 /// Checks whether the [path] represents a Windows drive root.
 bool isDriveRoot(String path) {
   if (Platform.isWindows) {
-    var p = path;
+    String p = path;
     if (p.startsWith(kWindowsStoragePathPrefix)) {
       p = p.substring(kWindowsStoragePathPrefix.length);
     }

@@ -371,7 +371,7 @@ extension FileExtension on File {
     final file = File(addPrefix(path));
     try {
       if (await file.exists_()) {
-        return file.length();
+        return await file.length();
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
@@ -401,7 +401,7 @@ extension FileExtension on File {
     final file = File(addPrefix(path));
     try {
       if (await file.exists_()) {
-        return file.lastModified();
+        return await file.lastModified();
       }
     } catch (exception, stacktrace) {
       print(exception.toString());
